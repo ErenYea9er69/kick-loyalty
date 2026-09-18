@@ -13,6 +13,41 @@ const CONFIG_FILE = process.env.VERCEL ? path.join('/tmp', 'config.json') : path
 app.use(cors())
 app.use(express.json())
 
+// ==========================================
+// KICKLOGZ API PROXY
+// ==========================================
+app.get('/api/kicklogz/bans/:username', async (req, res) => {
+  const username = req.params.username
+  const apiKey = req.headers['x-kicklogz-api-key']
+  
+  if (!apiKey) {
+    return res.status(401).json({ error: 'Missing x-kicklogz-api-key header' })
+  }
+
+  try {
+    const response = await fetch(`https://kicklogz.com/api/customer/v1/user/${username}/bans`, {
+      headers: {
+        'x-kicklogz-api-key': apiKey,
+        'Accept': 'application/json'
+      }
+    })
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      return res.status(response.status).json({ error: 'KickLogz API Error', details: errorText })
+    }
+
+    const data = await response.json()
+    res.json(data)
+  } catch (error) {
+    console.error(`Error fetching KickLogz bans for ${username}:`, error)
+    res.status(500).json({ error: 'Internal Server Error' })
+  }
+})
+
+// Catch-all to serve index.html for SPA (if static files enabled)
+// app.use(express.static('dist'))
+
 // ============================
 // State & Configuration
 // ============================

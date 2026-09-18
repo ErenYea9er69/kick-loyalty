@@ -241,8 +241,11 @@ export interface AuthStatus {
 // ============================
 
 export let currentData: KickChannelData | null = null
-let activeTab: 'clips' | 'subs' | 'chat' | 'rewards' | 'mod' | 'about' = 'clips'
+let activeTab: 'clips' | 'chat_search' | 'viewer_details' | 'streamer_stats' = 'streamer_stats'
 let chatSearchQuery: string = ''
+let chatSearchDateRange: string = 'any'
+let chatSearchChannel: string = ''
+let chatSearchUsername: string = ''
 let authStatus: AuthStatus = {
   configured: false,
   hasAppToken: false,
@@ -755,11 +758,9 @@ async function handleSearch(manualQuery?: string) {
     currentData = data
     // Select default tab depending on viewer vs streamer
     if (data.account_type === 'viewer') {
-      activeTab = 'mod'
-    } else if (data.clips && data.clips.length > 0) {
-      activeTab = 'clips'
+      activeTab = 'viewer_details'
     } else {
-      activeTab = 'subs'
+      activeTab = 'streamer_stats'
     }
     chatSearchQuery = ''
     renderProfile(data)
@@ -893,26 +894,19 @@ function renderProfile(data: KickChannelData) {
 
       <!-- 10X Rich Data Navigation Tabs -->
       <div class="profile-tabs">
+        <button class="profile-tab ${activeTab === 'streamer_stats' ? 'profile-tab--active' : ''}" data-tab="streamer_stats">
+          <span>📊</span> Streamer Statistics
+        </button>
+        <button class="profile-tab ${activeTab === 'chat_search' ? 'profile-tab--active' : ''}" data-tab="chat_search">
+          <span>💬</span> Chat Message Search
+          <span class="profile-tab__count">${messagesCount}</span>
+        </button>
+        <button class="profile-tab ${activeTab === 'viewer_details' ? 'profile-tab--active' : ''}" data-tab="viewer_details">
+          <span>👤</span> Viewer Details
+        </button>
         <button class="profile-tab ${activeTab === 'clips' ? 'profile-tab--active' : ''}" data-tab="clips">
           <span>🎬</span> Clips & Highlights
           <span class="profile-tab__count">${clipsCount}</span>
-        </button>
-        <button class="profile-tab ${activeTab === 'subs' ? 'profile-tab--active' : ''}" data-tab="subs">
-          <span>💎</span> Subscriptions & Gifted
-          <span class="profile-tab__count">${totalGiftsCount}</span>
-        </button>
-        <button class="profile-tab ${activeTab === 'chat' ? 'profile-tab--active' : ''}" data-tab="chat">
-          <span>💬</span> Live Chat & Activity
-          <span class="profile-tab__count">${messagesCount}</span>
-        </button>
-        <button class="profile-tab ${activeTab === 'rewards' ? 'profile-tab--active' : ''}" data-tab="rewards">
-          <span>🪙</span> Channel Point Rewards
-        </button>
-        <button class="profile-tab ${activeTab === 'mod' ? 'profile-tab--active' : ''}" data-tab="mod">
-          <span>🛡️</span> Moderation & Ban Standing
-        </button>
-        <button class="profile-tab ${activeTab === 'about' ? 'profile-tab--active' : ''}" data-tab="about">
-          <span>👤</span> About & Community
         </button>
       </div>
 
@@ -970,18 +964,14 @@ function renderTabContent(data: KickChannelData): string {
   switch (activeTab) {
     case 'clips':
       return renderClipsTab(data)
-    case 'subs':
-      return renderSubsTab(data)
-    case 'chat':
-      return renderChatTab(data)
-    case 'rewards':
-      return renderRewardsTab(data)
-    case 'mod':
-      return renderModTab(data)
-    case 'about':
-      return renderAboutTab(data)
+    case 'chat_search':
+      return renderChatSearchTab(data)
+    case 'viewer_details':
+      return renderViewerDetailsTab(data)
+    case 'streamer_stats':
+      return renderStreamerStatsTab(data)
     default:
-      return renderClipsTab(data)
+      return renderStreamerStatsTab(data)
   }
 }
 
@@ -1049,86 +1039,99 @@ function renderClipsTab(data: KickChannelData): string {
 // 2. Subscriptions & Gifted Subs Tab
 // ============================
 
-function renderSubsTab(data: KickChannelData): string {
+// ============================
+// Streamer Statistics Tab
+// ============================
+function renderStreamerStatsTab(data: KickChannelData): string {
+  if (data.account_type === 'viewer') {
+    return `
+      <div class="section-card" style="text-align: center; padding: var(--space-2xl);">
+        <div style="font-size: 2.8rem; margin-bottom: 12px;">📊</div>
+        <div style="font-size: 1.2rem; font-weight: 800; margin-bottom: 8px;">No Streamer Statistics Available</div>
+        <p style="color: var(--text-secondary); max-width: 480px; margin: 0 auto; font-size: 0.9rem; line-height: 1.6;">
+          This is a viewer account. Streamer statistics are only available for channels that broadcast.
+        </p>
+      </div>
+    `
+  }
+
   const activeSubs = data.active_subscribers_count ?? 0
   const activeGifted = data.active_gifted_subscribers_count ?? 0
   const canceled = data.canceled_subscribers_count ?? 0
-
-  const boards = data.leaderboards || { gifts: [], gifts_week: [], gifts_month: [] }
-  const allTimeGifts = boards.gifts || []
-  const monthGifts = boards.gifts_month || []
-  const weekGifts = boards.gifts_week || []
+  const totalSubs = activeSubs + activeGifted
 
   return `
     <div>
-      <!-- Kick 95/5 Revenue Callout -->
-      <div style="background: linear-gradient(135deg, rgba(83, 252, 24, 0.12), rgba(83, 252, 24, 0.03)); border: 1px solid rgba(83, 252, 24, 0.3); border-radius: var(--radius-lg); padding: var(--space-lg); margin-bottom: var(--space-xl); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-md);">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-md);">
         <div>
-          <div style="font-weight: 800; font-size: 1.1rem; color: var(--kick-green); margin-bottom: 2px;">
-            💎 Kick Creator-First 95/5 Subscription Revenue
-          </div>
-          <div style="font-size: 0.85rem; color: var(--text-secondary);">
-            Creators retain 95% of all subscription and gifted sub income, the highest creator split in livestreaming.
-          </div>
-        </div>
-        <div style="font-family: 'JetBrains Mono', monospace; font-size: 1.3rem; font-weight: 800; color: var(--kick-green);">
-          95% / 5%
+          <h2 style="font-size: 1.25rem; font-weight: 800; color: #fff;">Streamer Statistics (Live Overview)</h2>
+          <p style="font-size: 0.85rem; color: var(--text-secondary);">Current broadcast and channel performance analytics.</p>
         </div>
       </div>
 
-      <!-- Sub Metric Highlights (if official counts available) -->
-      ${(activeSubs > 0 || activeGifted > 0 || canceled > 0) ? `
-      <div class="sub-stats" style="margin-bottom: var(--space-xl);">
-        <div class="sub-stat">
-          <div class="sub-stat__value">${formatNumber(activeSubs)}</div>
-          <div class="sub-stat__label">Active Direct Subscribers</div>
+      <div class="stats-row" style="margin-bottom: var(--space-xl);">
+        <div class="stat-card">
+          <div class="stat-card__value" style="color: var(--kick-green);">${formatNumber(totalSubs)}</div>
+          <div class="stat-card__label">Total Subscribers</div>
         </div>
-        <div class="sub-stat">
-          <div class="sub-stat__value" style="color: #a855f7;">${formatNumber(activeGifted)}</div>
-          <div class="sub-stat__label">Active Gifted Subs</div>
+        <div class="stat-card">
+          <div class="stat-card__value" style="color: #4d9fff;">${formatNumber(data.followers_count || 0)}</div>
+          <div class="stat-card__label">Followers</div>
         </div>
-        <div class="sub-stat">
-          <div class="sub-stat__value" style="color: #ff6666;">${formatNumber(canceled)}</div>
-          <div class="sub-stat__label">Canceled Subs</div>
+        <div class="stat-card">
+          <div class="stat-card__value" style="color: #ffaa00;">${data.recent_messages?.length || 0}</div>
+          <div class="stat-card__label">Recent Chat Messages</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card__value" style="color: #a855f7;">${data.leaderboards?.gifts?.length || 0}</div>
+          <div class="stat-card__label">Top Gifters All-Time</div>
         </div>
       </div>
-      ` : ''}
 
-      <!-- Top Gifted Subs Leaderboards -->
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-lg);">
-        <!-- All-Time Leaderboard -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: var(--space-lg);">
         <div class="section-card">
           <div class="section-card__header">
-            <div class="section-card__icon section-card__icon--green">🏆</div>
-            <div class="section-card__title">All-Time Top Gifters</div>
-            <span class="section-card__count">${allTimeGifts.length} Top Contributors</span>
+            <div class="section-card__icon section-card__icon--blue">📺</div>
+            <div class="section-card__title">Broadcast Details</div>
           </div>
           <div class="section-card__body">
-            ${renderLeaderboardList(allTimeGifts)}
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-md);">
+                <span style="font-size: 0.88rem; color: var(--text-secondary);">Currently Live</span>
+                <span style="font-weight: 700; color: ${data.livestream?.is_live ? 'var(--kick-green)' : 'var(--text-muted)'};">${data.livestream?.is_live ? 'Yes' : 'No'}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-md);">
+                <span style="font-size: 0.88rem; color: var(--text-secondary);">Live Viewers</span>
+                <span style="font-weight: 700;">${formatNumber(data.livestream?.viewer_count || 0)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-md);">
+                <span style="font-size: 0.88rem; color: var(--text-secondary);">Category</span>
+                <span style="font-weight: 700;">${escapeHtml(data.category?.name || 'Unknown')}</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- Monthly Leaderboard -->
         <div class="section-card">
           <div class="section-card__header">
-            <div class="section-card__icon section-card__icon--blue">📅</div>
-            <div class="section-card__title">This Month's Gifters</div>
-            <span class="section-card__count">${monthGifts.length}</span>
+            <div class="section-card__icon section-card__icon--orange">📊</div>
+            <div class="section-card__title">Subscription Breakdown</div>
           </div>
           <div class="section-card__body">
-            ${renderLeaderboardList(monthGifts)}
-          </div>
-        </div>
-
-        <!-- Weekly Leaderboard -->
-        <div class="section-card">
-          <div class="section-card__header">
-            <div class="section-card__icon section-card__icon--orange">⚡</div>
-            <div class="section-card__title">This Week's Gifters</div>
-            <span class="section-card__count">${weekGifts.length}</span>
-          </div>
-          <div class="section-card__body">
-            ${renderLeaderboardList(weekGifts)}
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-md);">
+                <span style="font-size: 0.88rem; color: var(--text-secondary);">Direct Active Subs</span>
+                <span style="font-weight: 700;">${formatNumber(activeSubs)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-md);">
+                <span style="font-size: 0.88rem; color: var(--text-secondary);">Gifted Subs</span>
+                <span style="font-weight: 700; color: #a855f7;">${formatNumber(activeGifted)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-md);">
+                <span style="font-size: 0.88rem; color: var(--text-secondary);">Canceled</span>
+                <span style="font-weight: 700; color: #ff6666;">${formatNumber(canceled)}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1136,83 +1139,61 @@ function renderSubsTab(data: KickChannelData): string {
   `
 }
 
-function renderLeaderboardList(items: LeaderboardGifter[]): string {
-  if (!items || items.length === 0) {
-    return `<div class="section-card__empty">No gifted subscriptions recorded for this period.</div>`
-  }
-
-  return `
-    <div class="leaderboard-list">
-      ${items.map((item, index) => {
-        const rank = index + 1
-        const rankClass = rank === 1 ? 'leaderboard-rank--1' : rank === 2 ? 'leaderboard-rank--2' : rank === 3 ? 'leaderboard-rank--3' : ''
-        const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`
-
-        return `
-          <div class="leaderboard-item">
-            <div class="leaderboard-rank ${rankClass}">
-              ${medal}
-            </div>
-            <div class="leaderboard-user">${escapeHtml(item.username)}</div>
-            <div class="leaderboard-qty">
-              <span>🎁</span> ${formatNumber(item.quantity)} subs
-            </div>
-          </div>
-        `
-      }).join('')}
-    </div>
-  `
-}
-
 // ============================
-// 3. Live Chat & Activity Tab
+// Chat Message Search Tab
 // ============================
-
-function renderChatTab(data: KickChannelData): string {
+function renderChatSearchTab(data: KickChannelData): string {
   const messages = data.recent_messages || []
 
-  // Filter messages based on chatSearchQuery if any
-  const filtered = chatSearchQuery.trim()
-    ? messages.filter(m => 
-        m.content.toLowerCase().includes(chatSearchQuery.toLowerCase()) ||
-        m.sender.username.toLowerCase().includes(chatSearchQuery.toLowerCase())
-      )
-    : messages
+  let filtered = messages
+  if (chatSearchQuery.trim()) {
+    filtered = filtered.filter(m => m.content.toLowerCase().includes(chatSearchQuery.toLowerCase()))
+  }
+  if (chatSearchUsername.trim()) {
+    filtered = filtered.filter(m => m.sender.username.toLowerCase() === chatSearchUsername.toLowerCase())
+  }
 
   return `
     <div class="section-card section-card--full">
       <div class="section-card__header" style="flex-wrap: wrap; gap: 8px;">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <div class="section-card__icon section-card__icon--green">💬</div>
-          <div class="section-card__title">Recent Live Chat Activity</div>
+          <div class="section-card__icon section-card__icon--green">🔍</div>
+          <div class="section-card__title">Chat Message Search</div>
         </div>
         <span id="chat-count-display" class="section-card__count" style="color: var(--kick-green); background: rgba(83,252,24,0.1);">
-          ${filtered.length} / ${messages.length} Messages
+          ${filtered.length} Results
         </span>
       </div>
 
       <div class="section-card__body">
-        <!-- Interactive Search / Filter Bar -->
-        <div class="chat-filter-bar">
-          <input
-            type="text"
-            id="chat-filter-input"
-            class="chat-filter-input"
-            placeholder="🔍 Search chat messages or filter by username..."
-            value="${escapeHtml(chatSearchQuery)}"
-          />
+        <div style="display: flex; gap: var(--space-md); margin-bottom: var(--space-md); flex-wrap: wrap;">
+          <div style="flex: 1; min-width: 200px;">
+            <label style="display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">Search Keyword</label>
+            <input type="text" id="chat-search-keyword" class="chat-filter-input" placeholder="Message content..." value="${escapeHtml(chatSearchQuery)}" style="width: 100%; box-sizing: border-box;" />
+          </div>
+          <div style="flex: 1; min-width: 200px;">
+            <label style="display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">Filter by Username</label>
+            <input type="text" id="chat-search-user" class="chat-filter-input" placeholder="Exact username..." value="${escapeHtml(chatSearchUsername)}" style="width: 100%; box-sizing: border-box;" />
+          </div>
+          <div style="flex: 1; min-width: 200px;">
+            <label style="display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px;">Date Range</label>
+            <select id="chat-search-date" class="chat-filter-input" style="width: 100%; box-sizing: border-box; background-color: var(--bg-input);">
+              <option value="any" ${chatSearchDateRange === 'any' ? 'selected' : ''}>Recent (Live Buffer)</option>
+              <option value="today" disabled>Today (Requires KickLogz API Key)</option>
+              <option value="week" disabled>Last 7 Days (Requires API Key)</option>
+            </select>
+          </div>
         </div>
 
-        <!-- Chat Message Stream -->
-        <div id="chat-stream-container" class="chat-stream">
+        <div id="chat-stream-container" class="chat-stream" style="min-height: 300px; border: 1px solid var(--border-default); padding: var(--space-md); border-radius: var(--radius-md); background: #000;">
           ${filtered.length === 0 ? `
-            <div class="section-card__empty">No chat messages match "${escapeHtml(chatSearchQuery)}".</div>
+            <div class="section-card__empty">No chat messages match your search criteria. (Note: Only live broadcast messages are searchable without a third-party API key).</div>
           ` : filtered.map(m => `
             <div class="chat-msg">
               ${m.sender.level != null ? `<span class="chat-level">Lvl ${m.sender.level}</span>` : ''}
               <span class="chat-author" style="color: ${m.sender.color || '#53fc18'};">${escapeHtml(m.sender.username)}</span>
               <span class="chat-content">${escapeHtml(m.content)}</span>
-              ${m.created_at ? `<span class="chat-time">${timeAgo(m.created_at)}</span>` : ''}
+              ${m.created_at ? `<span class="chat-time" style="float: right;">${timeAgo(m.created_at)}</span>` : ''}
             </div>
           `).join('')}
         </div>
@@ -1222,374 +1203,192 @@ function renderChatTab(data: KickChannelData): string {
 }
 
 // ============================
-// 4. Channel Point Rewards & Loyalty Tab
+// Viewer Details Tab
 // ============================
-
-function renderRewardsTab(data: KickChannelData): string {
-  const rewards = data.rewards || [
-    { id: 1, title: 'Hydrate Streamer', cost: 500, description: 'Prompt the streamer to drink water and stay healthy live.', icon: '💧' },
-    { id: 2, title: 'Highlight Message', cost: 1200, description: 'Highlight your message in chat with glowing gold border.', icon: '✨' },
-    { id: 3, title: 'Timeout a Chatter', cost: 10000, description: 'Timeout any non-moderator chatter for 60 seconds.', icon: '⏳' },
-    { id: 4, title: 'VIP Diamond Badge (24h)', cost: 50000, description: 'Wear the diamond VIP badge in chat for 24 hours.', icon: '💎' },
-    { id: 5, title: 'TTS Voice Message', cost: 25000, description: 'Text-to-speech message played live on broadcast.', icon: '🔊' },
-  ]
-
-  return `
-    <div>
-      <!-- How Rewards Work Box -->
-      <div style="background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 215, 0, 0.02)); border: 1px solid rgba(255, 215, 0, 0.25); border-radius: var(--radius-lg); padding: var(--space-xl); margin-bottom: var(--space-xl);">
-        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-          <span style="font-size: 1.8rem;">🪙</span>
-          <div style="font-size: 1.2rem; font-weight: 800; color: #ffd700;">Kick Channel Points & Community Loyalty</div>
-        </div>
-        <p style="color: var(--text-secondary); font-size: 0.88rem; line-height: 1.6; margin-bottom: var(--space-md);">
-          Viewers earn loyalty points simply by tuning in, chatting, and participating in the channel. Points can be redeemed for on-stream actions, TTS voice messages, chat perks, and interactive broadcaster timeouts.
-        </p>
-
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
-          <div style="background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: var(--radius-md); font-size: 0.82rem;">
-            📺 <strong>+10 Points</strong> every 5 mins watched
-          </div>
-          <div style="background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: var(--radius-md); font-size: 0.82rem;">
-            🔔 <strong>+250 Points</strong> for following channel
-          </div>
-          <div style="background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: var(--radius-md); font-size: 0.82rem;">
-            💎 <strong>2X Multiplier</strong> for active subscribers
-          </div>
-        </div>
-      </div>
-
-      <!-- Rewards Grid -->
-      <div class="rewards-grid">
-        ${rewards.map(r => `
-          <div class="reward-card">
-            <div class="reward-header">
-              <span class="reward-icon">${r.icon}</span>
-              <span class="reward-cost">${formatNumber(r.cost)} PTS</span>
-            </div>
-            <div class="reward-title">${escapeHtml(r.title)}</div>
-            <div class="reward-desc">${escapeHtml(r.description)}</div>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  `
-}
-
 // ============================
-// 5. Moderation & Ban Standing Tab
+// Viewer Details Tab
 // ============================
-
-function renderModTab(data: KickChannelData): string {
+function renderViewerDetailsTab(data: KickChannelData): string {
   const isBanned = data.is_banned === true
-  const isMuted = data.muted === true
-
-  return `
-    <div>
-      <!-- Moderation Standing Hero Card -->
-      <div class="mod-standing-card" style="${isBanned ? 'border-color: rgba(255, 68, 68, 0.4); background: rgba(255, 68, 68, 0.08);' : ''}">
-        <div class="mod-shield-icon">${isBanned ? '⛔' : '🛡️'}</div>
-        <div>
-          <div class="mod-standing-title" style="${isBanned ? 'color: #ff4444;' : ''}">
-            ${isBanned ? 'Account Action Required (Banned)' : 'Good Standing (100% Clean Record)'}
-          </div>
-          <div class="mod-standing-desc">
-            ${isBanned 
-              ? 'This account has been flagged or suspended by Kick Moderation for a terms of service violation.' 
-              : 'This account adheres to all Kick Community Guidelines with zero active restrictions, zero channel strikes, and clean standing across the platform.'}
-          </div>
+  
+  // Try to parse cached Kicklogz data if we fetched it
+  let kicklogzBansHtml = `<div class="section-card__empty">Loading KickLogz data...</div>`
+  const kicklogzKey = localStorage.getItem('kicklogz_api_key') || ''
+  
+  if (!kicklogzKey) {
+    kicklogzBansHtml = `
+      <div style="background: rgba(255,170,0,0.1); border: 1px solid rgba(255,170,0,0.3); padding: var(--space-md); border-radius: var(--radius-md); text-align: center; margin-bottom: 12px;">
+        <div style="font-size: 1.5rem; margin-bottom: 8px;">🔑</div>
+        <div style="font-weight: 700; color: #ffaa00; margin-bottom: 6px;">KickLogz API Key Required</div>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5;">
+          Kick.com keeps ban history private. To view historical bans (timeouts, perma-bans, dates, and mods), you must connect a KickLogz API key.
+        </p>
+        <div style="display: flex; gap: 8px; justify-content: center; align-items: center; max-width: 400px; margin: 0 auto;">
+          <input type="password" id="klz-key-input" class="chat-filter-input" placeholder="klz_live_..." style="flex: 1;" />
+          <button id="klz-save-btn" class="setup-modal__submit" style="padding: 8px 16px; font-size: 0.85rem;">Save Key</button>
+        </div>
+        <div style="margin-top: 8px; font-size: 0.75rem; color: var(--text-muted);">
+          Don't have one? Get it at <a href="https://kicklogz.com" target="_blank" style="color: var(--kick-green);">KickLogz.com</a>
         </div>
       </div>
-
-      <!-- 3 Key Safety Metrics -->
-      <div class="mod-grid" style="margin-bottom: var(--space-xl);">
-        <div class="mod-metric-box">
-          <div class="mod-metric-value" style="color: ${isBanned ? '#ff4444' : 'var(--kick-green)'};">
-            ${isBanned ? '1 Ban' : '0 Bans'}
-          </div>
-          <div class="mod-metric-label">Active Channel Bans</div>
-        </div>
-        <div class="mod-metric-box">
-          <div class="mod-metric-value" style="color: ${isMuted ? '#ffaa00' : 'var(--kick-green)'};">
-            ${isMuted ? 'MUTED' : 'CLEAN'}
-          </div>
-          <div class="mod-metric-label">Chat Mute Status</div>
-        </div>
-        <div class="mod-metric-box">
-          <div class="mod-metric-value" style="color: var(--kick-green);">
-            0 Strikes
-          </div>
-          <div class="mod-metric-label">Community Strikes</div>
-        </div>
+    `
+  } else {
+    kicklogzBansHtml = `
+      <div id="klz-bans-container">
+        <div style="text-align: center; padding: 20px; color: var(--kick-green);">Fetching real ban history from KickLogz...</div>
       </div>
-
-      <!-- Verification & Safety Audit -->
-      <div class="section-card">
-        <div class="section-card__header">
-          <div class="section-card__icon section-card__icon--blue">🔒</div>
-          <div class="section-card__title">Platform Trust & Verification Audit</div>
-        </div>
-        <div class="section-card__body">
-          <div style="display: flex; flex-direction: column; gap: 12px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg-secondary); border-radius: var(--radius-md);">
-              <span style="font-size: 0.88rem; color: var(--text-secondary);">Account Registration</span>
-              <span style="font-weight: 700; font-size: 0.9rem;">${data.created_at ? formatDate(data.created_at) : 'Active User'}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg-secondary); border-radius: var(--radius-md);">
-              <span style="font-size: 0.88rem; color: var(--text-secondary);">Creator Verification Status</span>
-              <span style="font-weight: 700; font-size: 0.9rem; color: ${data.verified ? 'var(--kick-green)' : 'var(--text-muted)'};">
-                ${data.verified ? '✓ Official Verified Creator' : 'Standard Community Member'}
-              </span>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg-secondary); border-radius: var(--radius-md);">
-              <span style="font-size: 0.88rem; color: var(--text-secondary);">Safety Compliance</span>
-              <span style="font-weight: 700; font-size: 0.9rem; color: var(--kick-green);">100% In Good Standing</span>
-            </div>
-          </div>
-        </div>
+      <div style="text-align: center; margin-top: 12px;">
+        <button id="klz-clear-btn" style="background: transparent; border: none; color: #ff4444; font-size: 0.8rem; cursor: pointer; text-decoration: underline;">Disconnect KickLogz API</button>
       </div>
-    </div>
-  `
-}
-
-// ============================
-// 6. About & Community Tab
-// ============================
-
-function renderAboutTab(data: KickChannelData): string {
-  const user = data.user
-  const socials: { platform: string; url: string }[] = []
-  if (user.instagram) socials.push({ platform: 'Instagram', url: user.instagram.startsWith('http') ? user.instagram : `https://instagram.com/${user.instagram}` })
-  if (user.twitter) socials.push({ platform: 'Twitter / X', url: user.twitter.startsWith('http') ? user.twitter : `https://twitter.com/${user.twitter}` })
-  if (user.youtube) socials.push({ platform: 'YouTube', url: user.youtube.startsWith('http') ? user.youtube : `https://youtube.com/${user.youtube}` })
-  if (user.discord) socials.push({ platform: 'Discord', url: user.discord.startsWith('http') ? user.discord : user.discord })
-  if (user.tiktok) socials.push({ platform: 'TikTok', url: user.tiktok.startsWith('http') ? user.tiktok : `https://tiktok.com/@${user.tiktok}` })
-  if (user.facebook) socials.push({ platform: 'Facebook', url: user.facebook.startsWith('http') ? user.facebook : `https://facebook.com/${user.facebook}` })
-
-  const links = data.ascending_links || []
+    `
+  }
 
   return `
     <div class="sections-grid">
-      ${renderSubscriberBadgesSection(data)}
-      ${renderUsernameHistorySection(data)}
-      ${renderRecentCategoriesSection(data)}
-      ${renderSocialsSection(socials)}
-      ${renderLinksSection(links)}
-    </div>
-  `
-}
-
-function renderSubscriberBadgesSection(data: KickChannelData): string {
-  const badges = data.subscriber_badges || []
-  if (badges.length === 0) {
-    return `
-    <div class="section-card">
-      <div class="section-card__header">
-        <div class="section-card__icon section-card__icon--green">🏅</div>
-        <div class="section-card__title">Subscriber Loyalty Badges</div>
-      </div>
-      <div class="section-card__body">
-        <div class="section-card__empty">No custom subscriber badges configured</div>
-      </div>
-    </div>
-    `
-  }
-
-  return `
-  <div class="section-card">
-    <div class="section-card__header">
-      <div class="section-card__icon section-card__icon--green">🏅</div>
-      <div class="section-card__title">Subscriber Badges</div>
-      <span class="section-card__count">${badges.length} tiers</span>
-    </div>
-    <div class="section-card__body">
-      <div class="badge-grid">
-        ${badges.map(b => `
-          <div class="badge-item">
-            ${b.badge_image?.src ? `
-              <img src="${escapeHtml(b.badge_image.src)}" alt="${b.months} month badge" loading="lazy" onerror="this.style.display='none'" />
-            ` : `
-              <div style="width:40px;height:40px;border-radius:8px;background:var(--bg-badge);display:flex;align-items:center;justify-content:center;font-size:1.2rem;">🏅</div>
-            `}
-            <span class="badge-item__label">${b.months}+ mo</span>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  </div>
-  `
-}
-
-function renderUsernameHistorySection(data: KickChannelData): string {
-  const history = data.previous_usernames || []
-  if (history.length === 0) {
-    return `
-    <div class="section-card">
-      <div class="section-card__header">
-        <div class="section-card__icon section-card__icon--orange">📝</div>
-        <div class="section-card__title">Username History</div>
-      </div>
-      <div class="section-card__body">
-        <div class="section-card__empty">No previous username changes</div>
-      </div>
-    </div>
-    `
-  }
-
-  return `
-  <div class="section-card">
-    <div class="section-card__header">
-      <div class="section-card__icon section-card__icon--orange">📝</div>
-      <div class="section-card__title">Username History</div>
-      <span class="section-card__count">${history.length} records</span>
-    </div>
-    <div class="section-card__body">
-      <div class="history-list">
-        ${history.map(h => `
-          <div class="history-item">
-            <span class="history-item__name">${escapeHtml(h.username)}</span>
-            <span class="history-item__date">${formatDate(h.created_at)}</span>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  </div>
-  `
-}
-
-function renderRecentCategoriesSection(data: KickChannelData): string {
-  const categories = data.recent_categories || []
-  if (categories.length === 0) {
-    return `
-    <div class="section-card">
-      <div class="section-card__header">
-        <div class="section-card__icon section-card__icon--blue">🎮</div>
-        <div class="section-card__title">Recent Categories</div>
-      </div>
-      <div class="section-card__body">
-        <div class="section-card__empty">No recent categories recorded</div>
-      </div>
-    </div>
-    `
-  }
-
-  return `
-  <div class="section-card">
-    <div class="section-card__header">
-      <div class="section-card__icon section-card__icon--blue">🎮</div>
-      <div class="section-card__title">Recent Categories</div>
-      <span class="section-card__count">${categories.length}</span>
-    </div>
-    <div class="section-card__body">
-      <div class="category-grid">
-        ${categories.map(c => {
-          const iconUrl = c.category?.icon || ''
-          return `
-            <div class="category-pill">
-              ${iconUrl ? `<img src="${escapeHtml(iconUrl)}" alt="" loading="lazy" onerror="this.style.display='none'" />` : ''}
-              ${escapeHtml(c.name)}
+      <!-- 1. Moderation & KickLogz Ban History -->
+      <div class="section-card" style="grid-column: 1 / -1;">
+        <div class="section-card__header">
+          <div class="section-card__icon section-card__icon--blue">🛡️</div>
+          <div class="section-card__title">Moderation & Real Ban History (KickLogz)</div>
+        </div>
+        <div class="section-card__body">
+          <div class="mod-standing-card" style="margin-bottom: 16px; padding: 16px; ${isBanned ? 'border-color: rgba(255, 68, 68, 0.4); background: rgba(255, 68, 68, 0.08);' : ''}">
+            <div class="mod-shield-icon" style="font-size: 2rem;">${isBanned ? '⛔' : '🛡️'}</div>
+            <div>
+              <div class="mod-standing-title" style="${isBanned ? 'color: #ff4444;' : ''}">
+                ${isBanned ? 'Currently Banned (Global)' : 'Current Global Standing (Clean)'}
+              </div>
             </div>
-          `
-        }).join('')}
+          </div>
+          
+          <h3 style="font-size: 1rem; color: #fff; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <span style="color: #ff4444;">🚫</span> Historical Ban Log
+          </h3>
+          
+          ${kicklogzBansHtml}
+          
+        </div>
+      </div>
+
+      <div class="section-card">
+        <div class="section-card__header">
+          <div class="section-card__icon section-card__icon--orange">📝</div>
+          <div class="section-card__title">Username History</div>
+        </div>
+        <div class="section-card__body">
+          ${(data.previous_usernames && data.previous_usernames.length > 0) ? `
+            <div class="history-list">
+              ${data.previous_usernames.map(h => `
+                <div class="history-item" style="padding: 8px;">
+                  <span class="history-item__name">${escapeHtml(h.username)}</span>
+                  <span class="history-item__date">${formatDate(h.created_at)}</span>
+                </div>
+              `).join('')}
+            </div>
+          ` : `
+            <div class="section-card__empty">No previous username changes found.</div>
+          `}
+        </div>
+      </div>
+
+      <div class="section-card">
+        <div class="section-card__header">
+          <div class="section-card__icon section-card__icon--green">🏅</div>
+          <div class="section-card__title">User Profile Details</div>
+        </div>
+        <div class="section-card__body">
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-md);">
+              <span style="font-size: 0.88rem; color: var(--text-secondary);">Role</span>
+              <span style="font-weight: 700;">${data.account_type === 'viewer' ? 'Viewer' : 'Streamer'}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-md);">
+              <span style="font-size: 0.88rem; color: var(--text-secondary);">Verified</span>
+              <span style="font-weight: 700; color: ${data.verified ? 'var(--kick-green)' : 'var(--text-muted)'};">${data.verified ? 'Yes' : 'No'}</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
   `
 }
 
-function renderSocialsSection(socials: { platform: string; url: string }[]): string {
-  if (socials.length === 0) {
-    return `
-    <div class="section-card">
-      <div class="section-card__header">
-        <div class="section-card__icon section-card__icon--pink">🌐</div>
-        <div class="section-card__title">Social Links</div>
-      </div>
-      <div class="section-card__body">
-        <div class="section-card__empty">No social accounts connected</div>
-      </div>
-    </div>
-    `
-  }
+// Fetch Kicklogz Data Function
+async function fetchKicklogzBans(username: string) {
+  const apiKey = localStorage.getItem('kicklogz_api_key')
+  if (!apiKey) return
 
-  return `
-  <div class="section-card">
-    <div class="section-card__header">
-      <div class="section-card__icon section-card__icon--pink">🌐</div>
-      <div class="section-card__title">Social Profiles</div>
-      <span class="section-card__count">${socials.length}</span>
-    </div>
-    <div class="section-card__body">
-      <div class="social-links">
-        ${socials.map(s => `
-          <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" class="social-link">
-            <span>${getSocialIcon(s.platform)}</span>
-            <span class="social-link__platform">${escapeHtml(s.platform)}</span>
-          </a>
-        `).join('')}
-      </div>
-    </div>
-  </div>
-  `
-}
+  const container = document.getElementById('klz-bans-container')
+  if (!container) return
 
-function renderLinksSection(links: AscendingLink[]): string {
-  if (links.length === 0) return ''
-
-  return `
-  <div class="section-card">
-    <div class="section-card__header">
-      <div class="section-card__icon section-card__icon--green">🔗</div>
-      <div class="section-card__title">Channel Custom Links</div>
-      <span class="section-card__count">${links.length}</span>
-    </div>
-    <div class="section-card__body">
-      <div class="social-links">
-        ${links.map(l => `
-          <a href="${escapeHtml(l.link)}" target="_blank" rel="noopener noreferrer" class="social-link">
-            <span>🔗</span>
-            <span class="social-link__platform">${escapeHtml(l.title)}</span>
-          </a>
-        `).join('')}
-      </div>
-    </div>
-  </div>
-  `
-}
-
-// ============================
-// Profile Event Handlers
-// ============================
-
-function bindProfileEvents(data: KickChannelData) {
-  // Tab Switching
-  document.querySelectorAll('.profile-tab').forEach(tab => {
-    tab.addEventListener('click', (e) => {
-      const target = (e.currentTarget as HTMLElement).dataset.tab as any
-      if (target && target !== activeTab) {
-        activeTab = target
-        // Update active tab class
-        document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('profile-tab--active'))
-        tab.classList.add('profile-tab--active')
-
-        // Re-render tab content
-        const area = document.getElementById('tab-content-area')
-        if (area) {
-          area.innerHTML = renderTabContent(data)
-          bindTabSpecificEvents(data)
-        }
-      }
+  try {
+    const res = await fetch(`http://localhost:3001/api/kicklogz/bans/${encodeURIComponent(username)}`, {
+      headers: { 'x-kicklogz-api-key': apiKey }
     })
-  })
+    
+    if (res.status === 403 || res.status === 401) {
+      container.innerHTML = `<div class="section-card__empty" style="color: #ff4444;">Invalid KickLogz API Key or Unauthorized.</div>`
+      return
+    }
 
-  bindTabSpecificEvents(data)
+    if (!res.ok) {
+      container.innerHTML = `<div class="section-card__empty" style="color: #ff4444;">Failed to fetch from KickLogz (Error ${res.status}).</div>`
+      return
+    }
 
-  // Raw JSON viewer
-  const rawBtn = document.getElementById('view-raw-json-btn')
-  if (rawBtn) {
-    rawBtn.addEventListener('click', () => openRawJsonModal(data))
+    const data = await res.json()
+    // Kicklogz response format depends on their API, we assume data.bans or data is an array
+    const bans = Array.isArray(data) ? data : (data.bans || [])
+    
+    if (bans.length === 0) {
+      container.innerHTML = `<div class="section-card__empty">No ban history found on KickLogz for this user.</div>`
+      return
+    }
+
+    container.innerHTML = `
+      <div style="background: rgba(255, 68, 68, 0.1); border: 1px solid rgba(255, 68, 68, 0.3); padding: 12px; border-radius: var(--radius-md); margin-bottom: 16px;">
+        <div style="font-weight: 800; color: #ff4444; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
+          <span>🚫</span> Ban History (${bans.length})
+        </div>
+      </div>
+      <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+          <thead>
+            <tr style="border-bottom: 1px solid var(--border-default); color: var(--kick-green); text-align: left;">
+              <th style="padding: 12px;">CHANNEL</th>
+              <th style="padding: 12px;">BANNED BY</th>
+              <th style="padding: 12px;">DATE</th>
+              <th style="padding: 12px;">DURATION</th>
+              <th style="padding: 12px;">STATUS</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${bans.map((b: any) => `
+              <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 12px; color: var(--kick-green); font-weight: 700;">${escapeHtml(b.channel?.username || b.channel || 'Unknown')}</td>
+                <td style="padding: 12px; color: var(--text-secondary);">${escapeHtml(b.banned_by?.username || b.banned_by || 'Unknown')}</td>
+                <td style="padding: 12px; color: var(--text-secondary);">${formatDate(b.created_at || b.date || new Date().toISOString())}</td>
+                <td style="padding: 12px;">
+                  <span style="background: ${b.is_permanent ? '#ff4444' : 'rgba(255, 170, 0, 0.2)'}; color: ${b.is_permanent ? '#fff' : '#ffaa00'}; padding: 4px 8px; border-radius: 4px; font-weight: 700; font-size: 0.75rem;">
+                    ${b.is_permanent ? 'PERMANENT' : `TIMEOUT ${b.duration || '5'}m`}
+                  </span>
+                </td>
+                <td style="padding: 12px;">
+                  <span style="border: 1px solid rgba(255,255,255,0.2); padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; color: #aaa;">
+                    ${b.unbanned ? 'UNBANNED' : 'EXPIRED'}
+                  </span>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `
+  } catch (err) {
+    container.innerHTML = `<div class="section-card__empty" style="color: #ff4444;">Connection error to proxy.</div>`
   }
 }
+
 
 function bindTabSpecificEvents(data: KickChannelData) {
   // Clip click handlers
@@ -1603,41 +1402,85 @@ function bindTabSpecificEvents(data: KickChannelData) {
     })
   })
 
-  // Chat filter input handler
-  const chatInput = document.getElementById('chat-filter-input') as HTMLInputElement
-  if (chatInput) {
-    chatInput.addEventListener('input', (e) => {
-      chatSearchQuery = (e.target as HTMLInputElement).value
-      const messages = data.recent_messages || []
-      const filtered = chatSearchQuery.trim()
-        ? messages.filter(m => 
-            m.content.toLowerCase().includes(chatSearchQuery.toLowerCase()) ||
-            m.sender.username.toLowerCase().includes(chatSearchQuery.toLowerCase())
-          )
-        : messages
+  // Chat filter input handlers
+  const kwInput = document.getElementById('chat-search-keyword') as HTMLInputElement
+  const usrInput = document.getElementById('chat-search-user') as HTMLInputElement
+  const dateInput = document.getElementById('chat-search-date') as HTMLSelectElement
 
-      const container = document.getElementById('chat-stream-container')
-      const countDisplay = document.getElementById('chat-count-display')
+  const updateSearch = () => {
+    chatSearchQuery = kwInput?.value || ''
+    chatSearchUsername = usrInput?.value || ''
+    chatSearchDateRange = dateInput?.value || 'any'
 
-      if (countDisplay) {
-        countDisplay.textContent = `${filtered.length} / ${messages.length} Messages`
+    const messages = data.recent_messages || []
+    let filtered = messages
+    if (chatSearchQuery.trim()) {
+      filtered = filtered.filter(m => m.content.toLowerCase().includes(chatSearchQuery.toLowerCase()))
+    }
+    if (chatSearchUsername.trim()) {
+      filtered = filtered.filter(m => m.sender.username.toLowerCase() === chatSearchUsername.toLowerCase())
+    }
+
+    const container = document.getElementById('chat-stream-container')
+    const countDisplay = document.getElementById('chat-count-display')
+
+    if (countDisplay) {
+      countDisplay.textContent = `${filtered.length} Results`
+    }
+
+    if (container) {
+      if (filtered.length === 0) {
+        container.innerHTML = `<div class="section-card__empty">No chat messages match your search criteria. (Note: Only live broadcast messages are searchable without a third-party API key).</div>`
+      } else {
+        container.innerHTML = filtered.map(m => `
+          <div class="chat-msg">
+            ${m.sender.level != null ? `<span class="chat-level">Lvl ${m.sender.level}</span>` : ''}
+            <span class="chat-author" style="color: ${m.sender.color || '#53fc18'};${m.sender.username.toLowerCase() === chatSearchUsername.toLowerCase() ? 'font-weight: 800;' : ''}">${escapeHtml(m.sender.username)}</span>
+            <span class="chat-content">${escapeHtml(m.content)}</span>
+            ${m.created_at ? `<span class="chat-time" style="float: right;">${timeAgo(m.created_at)}</span>` : ''}
+          </div>
+        `).join('')
       }
+    }
+  }
 
-      if (container) {
-        if (filtered.length === 0) {
-          container.innerHTML = `<div class="section-card__empty">No chat messages match "${escapeHtml(chatSearchQuery)}".</div>`
-        } else {
-          container.innerHTML = filtered.map(m => `
-            <div class="chat-msg">
-              ${m.sender.level != null ? `<span class="chat-level">Lvl ${m.sender.level}</span>` : ''}
-              <span class="chat-author" style="color: ${m.sender.color || '#53fc18'};">${escapeHtml(m.sender.username)}</span>
-              <span class="chat-content">${escapeHtml(m.content)}</span>
-              ${m.created_at ? `<span class="chat-time">${timeAgo(m.created_at)}</span>` : ''}
-            </div>
-          `).join('')
+  if (kwInput) kwInput.addEventListener('input', updateSearch)
+  if (usrInput) usrInput.addEventListener('input', updateSearch)
+  if (dateInput) dateInput.addEventListener('change', updateSearch)
+
+  // KickLogz API Key Handlers
+  const klzSaveBtn = document.getElementById('klz-save-btn')
+  const klzInput = document.getElementById('klz-key-input') as HTMLInputElement
+  const klzClearBtn = document.getElementById('klz-clear-btn')
+
+  if (klzSaveBtn && klzInput) {
+    klzSaveBtn.addEventListener('click', () => {
+      const val = klzInput.value.trim()
+      if (val) {
+        localStorage.setItem('kicklogz_api_key', val)
+        // Refresh tab
+        const area = document.getElementById('tab-content-area')
+        if (area) {
+          area.innerHTML = renderTabContent(data)
+          bindTabSpecificEvents(data)
         }
       }
     })
+  }
+
+  if (klzClearBtn) {
+    klzClearBtn.addEventListener('click', () => {
+      localStorage.removeItem('kicklogz_api_key')
+      const area = document.getElementById('tab-content-area')
+      if (area) {
+        area.innerHTML = renderTabContent(data)
+        bindTabSpecificEvents(data)
+      }
+    })
+  }
+
+  if (activeTab === 'viewer_details' && localStorage.getItem('kicklogz_api_key')) {
+    fetchKicklogzBans(data.user.username)
   }
 }
 
