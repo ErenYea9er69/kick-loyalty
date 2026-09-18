@@ -7,8 +7,8 @@ import path from 'path'
 import { SAMPLE_CHANNELS } from './samples.mjs'
 
 const app = express()
-const PORT = 3001
-const CONFIG_FILE = path.resolve('config.json')
+const PORT = process.env.PORT || 3001
+const CONFIG_FILE = process.env.VERCEL ? path.join('/tmp', 'config.json') : path.resolve('config.json')
 
 app.use(cors())
 app.use(express.json())
@@ -20,7 +20,7 @@ app.use(express.json())
 let oauthConfig = {
   clientId: process.env.KICK_CLIENT_ID || '',
   clientSecret: process.env.KICK_CLIENT_SECRET || '',
-  redirectUri: process.env.KICK_REDIRECT_URI || 'http://localhost:5173/callback',
+  redirectUri: process.env.KICK_REDIRECT_URI || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}/callback` : 'http://localhost:5173/callback'),
 }
 
 let appToken = null        // { access_token, expires_at }
@@ -569,10 +569,14 @@ app.get('/api/channel/:slug', async (req, res) => {
   return res.json(merged)
 })
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`\n🟢 KickView Backend Server active on http://localhost:${PORT}`)
-  console.log(`   Configured: ${!!(oauthConfig.clientId && oauthConfig.clientSecret) ? 'YES' : 'NO (Configure in UI)'}`)
-  console.log(`   Redirect URI: ${oauthConfig.redirectUri}`)
-  console.log(`   Sample Profiles: xqc, trainwreckstv, adinross, amouranth\n`)
-})
+// Start server locally if not in Vercel serverless environment
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`\n🟢 KickView Backend Server active on http://localhost:${PORT}`)
+    console.log(`   Configured: ${!!(oauthConfig.clientId && oauthConfig.clientSecret) ? 'YES' : 'NO (Configure in UI)'}`)
+    console.log(`   Redirect URI: ${oauthConfig.redirectUri}`)
+    console.log(`   Sample Profiles: xqc, trainwreckstv, adinross, amouranth\n`)
+  })
+}
+
+export default app
