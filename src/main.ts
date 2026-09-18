@@ -33,6 +33,10 @@ interface KickChannelData {
   socials?: string[]
   media?: MediaItem[]
 
+  // Viewer vs Streamer fields
+  account_type?: 'viewer' | 'streamer'
+  created_at?: string | null
+
   // Official API fields
   active_subscribers_count?: number | null
   active_gifted_subscribers_count?: number | null
@@ -43,6 +47,7 @@ interface KickChannelData {
   _sources?: {
     official: boolean
     v2: boolean
+    v1_user?: boolean
     sample?: boolean
   }
 }
@@ -314,13 +319,22 @@ function renderApp() {
           <div class="header__subtitle">Kick.com Platform & Profile Intelligence</div>
         </div>
       </div>
+      <div class="header__actions" style="display:flex; gap:10px; align-items:center;">
+        ${authStatus.hasUserToken ? `
+          <button id="nav-logout-btn" class="auth-bar__btn auth-bar__btn--danger">Log Out</button>
+        ` : `
+          <button id="nav-login-btn" class="auth-bar__btn auth-bar__btn--kick" style="font-size:0.85rem; padding: 7px 18px; border-width: 2px; font-weight: 700; box-shadow: 0 0 12px rgba(83,252,24,0.15); display: flex; align-items: center; gap: 6px;">
+            <span>⚡</span> Log in with Kick (Free)
+          </button>
+        `}
+      </div>
     </header>
 
     <!-- Search Section -->
     <section class="search-section">
       <h1 class="search-hero-title">Explore Any Kick Profile</h1>
       <p class="search-hero-desc">
-        Lookup any streamer or user to inspect channel data, subscriptions, live stats, subscriber badges, name change history, chatroom rules, and social links.
+        Lookup any streamer or viewer to inspect channel data, subscriptions, live stats, subscriber badges, name change history, chatroom rules, and social links.
       </p>
 
       <div class="search-box">
@@ -328,7 +342,7 @@ function renderApp() {
           type="text"
           id="search-input"
           class="search-box__input"
-          placeholder="Enter Kick username (e.g. xqc, trainwreckstv)..."
+          placeholder="Enter Kick username (e.g. splash_699, xqc)..."
           autocomplete="off"
           spellcheck="false"
         />
@@ -342,10 +356,18 @@ function renderApp() {
       <!-- Quick Chips -->
       <div class="quick-chips">
         <span class="quick-chips__label">⚡ Quick Profiles:</span>
+        <button class="quick-chip" data-username="splash_699">splash_699 (Viewer)</button>
         <button class="quick-chip" data-username="xqc">xQc</button>
         <button class="quick-chip" data-username="trainwreckstv">Trainwreckstv</button>
         <button class="quick-chip" data-username="adinross">AdinRoss</button>
-        <button class="quick-chip" data-username="amouranth">Amouranth</button>
+      </div>
+
+      <!-- Free Login Callout -->
+      <div style="margin-top: 14px; font-size: 0.85rem; color: var(--text-secondary);">
+        Want to view your private subscriber metrics & rewards? 
+        <button id="hero-login-btn" style="background:none; border:none; color:var(--kick-green); font-weight:700; text-decoration:underline; cursor:pointer; font-size:0.85rem; font-family:inherit;">
+          ⚡ Log in with Kick (100% Free) ↗
+        </button>
       </div>
     </section>
 
@@ -376,33 +398,22 @@ function renderAuthBarContent(): string {
     return `
       <div class="auth-bar__status">
         <span class="auth-bar__dot auth-bar__dot--connected"></span>
-        <span>Kick API: <strong>Connected</strong> (App Credentials)</span>
+        <span>Kick API: <strong>Connected</strong></span>
       </div>
-      <button id="login-kick-btn" class="auth-bar__btn auth-bar__btn--kick">⚡ Login with Kick</button>
+      <button id="login-kick-btn" class="auth-bar__btn auth-bar__btn--kick">⚡ Log in with Kick (Free)</button>
       <button id="config-btn" class="auth-bar__btn">Settings</button>
-    `
-  }
-
-  if (authStatus.configured) {
-    return `
-      <div class="auth-bar__status">
-        <span class="auth-bar__dot auth-bar__dot--disconnected"></span>
-        <span>Credentials configured (reconnecting...)</span>
-      </div>
-      <button id="login-kick-btn" class="auth-bar__btn auth-bar__btn--kick">⚡ Login with Kick</button>
-      <button id="config-btn" class="auth-bar__btn">Configure API</button>
     `
   }
 
   return `
     <div class="auth-bar__status">
-      <span class="auth-bar__dot auth-bar__dot--disconnected"></span>
-      <span>Kick API: <strong>Not Configured</strong> (Using Sample Previews)</span>
+      <span class="auth-bar__dot auth-bar__dot--connected" style="background: #4d9fff; box-shadow: 0 0 8px rgba(77, 159, 255, 0.4);"></span>
+      <span>Kick Mode: <strong>Live Public & User Lookup Active</strong></span>
     </div>
-    <button id="config-btn" class="auth-bar__btn auth-bar__btn--kick">🔑 Configure Kick API</button>
+    <button id="login-kick-btn" class="auth-bar__btn auth-bar__btn--kick">⚡ Log in with Kick (Free)</button>
+    <button id="config-btn" class="auth-bar__btn">⚙️ API Settings</button>
   `
 }
-
 function updateAuthBar() {
   const bar = document.getElementById('auth-bar')
   if (bar) {
@@ -438,6 +449,16 @@ function bindEvents() {
     })
   })
 
+  // Header Nav Login/Logout
+  const navLogin = document.getElementById('nav-login-btn')
+  if (navLogin) navLogin.addEventListener('click', () => startKickLogin())
+
+  const heroLogin = document.getElementById('hero-login-btn')
+  if (heroLogin) heroLogin.addEventListener('click', () => startKickLogin())
+
+  const navLogout = document.getElementById('nav-logout-btn')
+  if (navLogout) navLogout.addEventListener('click', () => logoutUser())
+
   bindAuthBarButtons()
 }
 
@@ -462,8 +483,8 @@ async function startKickLogin() {
     const data = await res.json()
 
     if (!res.ok || data.error) {
-      alert(data.error || 'Failed to initialize Kick login.')
-      openSetupModal()
+      // If credentials are not yet configured, guide the user to the free setup modal
+      openSetupModal(true)
       return
     }
 
@@ -552,17 +573,19 @@ async function exchangeOAuthCode(code: string) {
 // Setup Modal
 // ============================
 
-function openSetupModal() {
+function openSetupModal(forLogin = false) {
   const modalContainer = document.getElementById('modal-container')!
   modalContainer.innerHTML = `
     <div class="setup-overlay" id="setup-overlay">
       <div class="setup-modal__content">
         <div class="setup-modal__title">
-          <span>⚙️ Kick Developer API Setup</span>
+          <span>${forLogin ? '⚡ Log In with Kick (100% Free)' : '⚙️ Kick Developer API Setup'}</span>
         </div>
         <p class="setup-modal__desc">
-          To fetch live public and authenticated data from Kick's official API, enter your Client Credentials from the 
-          <a href="https://kick.com/settings/developer" target="_blank" rel="noopener noreferrer">Kick Developer Portal ↗</a>.
+          ${forLogin 
+            ? `Logging in with Kick is <strong>100% free</strong>! Kick protects your account with OAuth 2.1 PKCE. To start, get a free Client ID from the <a href="https://kick.com/settings/developer" target="_blank" rel="noopener noreferrer">Kick Developer Portal ↗</a> (takes 30 seconds), enter it below, and we'll instantly open Kick's official login page!`
+            : `To fetch live public and authenticated data from Kick's official API, enter your Client Credentials from the <a href="https://kick.com/settings/developer" target="_blank" rel="noopener noreferrer">Kick Developer Portal ↗</a>.`
+          }
         </p>
 
         <div class="setup-modal__field">
@@ -603,7 +626,7 @@ function openSetupModal() {
 
         <div class="setup-modal__actions">
           <button id="setup-cancel-btn" class="setup-modal__cancel">Cancel</button>
-          <button id="setup-submit-btn" class="setup-modal__submit">Save & Test Connection</button>
+          <button id="setup-submit-btn" class="setup-modal__submit">${forLogin ? '⚡ Connect & Log in with Kick' : 'Save & Test Connection'}</button>
         </div>
       </div>
     </div>
@@ -653,7 +676,12 @@ function openSetupModal() {
         msgBox.textContent = `✅ ${data.message}`
         await checkStatus()
         updateAuthBar()
-        setTimeout(() => closeModal(), 1500)
+        setTimeout(() => {
+          closeModal()
+          if (forLogin) {
+            startKickLogin()
+          }
+        }, 1200)
       } else {
         msgBox.style.display = 'block'
         msgBox.className = 'setup-modal__message setup-modal__message--error'
@@ -667,7 +695,7 @@ function openSetupModal() {
       msgBox.textContent = `Error: ${err.message}`
     } finally {
       submitBtn.disabled = false
-      submitBtn.textContent = 'Save & Test Connection'
+      submitBtn.textContent = forLogin ? '⚡ Connect & Log in with Kick' : 'Save & Test Connection'
     }
   })
 }
@@ -770,6 +798,11 @@ function renderProfile(data: KickChannelData) {
         <div class="profile__info">
           <div class="profile__name-row">
             <span class="profile__name">${escapeHtml(user.username)}</span>
+            ${data.account_type === 'viewer' ? `
+            <span class="source-badge" style="background: rgba(77, 159, 255, 0.15); color: #4d9fff; border: 1px solid rgba(77, 159, 255, 0.3); font-size: 0.75rem; padding: 3px 10px;">
+              👤 Watcher / Viewer
+            </span>
+            ` : ''}
             ${isVerified ? `
             <span class="profile__verified" title="Verified Creator">
               <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
@@ -779,9 +812,11 @@ function renderProfile(data: KickChannelData) {
           </div>
           <div class="profile__slug">
             <span>kick.com/${escapeHtml(data.slug)}</span>
+            ${data.created_at ? `<span style="color:var(--text-secondary); margin-left: 8px; font-size: 0.8rem;">• Member since ${formatDate(data.created_at)}</span>` : ''}
             <!-- Source Badges -->
             ${data._sources?.official ? '<span class="source-badge source-badge--official">Official Kick API</span>' : ''}
-            ${data._sources?.v2 ? '<span class="source-badge source-badge--v2">v2 Channel</span>' : ''}
+            ${data._sources?.v2 ? '<span class="source-badge source-badge--v2">Kick Channel</span>' : ''}
+            ${data._sources?.v1_user ? '<span class="source-badge" style="background: rgba(77, 159, 255, 0.12); color: #4d9fff;">User Profile ✓</span>' : ''}
             ${isSample ? '<span class="source-badge source-badge--sample">⚡ Sample Preview</span>' : ''}
           </div>
           ${user.bio ? `<div class="profile__bio">${escapeHtml(user.bio)}</div>` : ''}
@@ -794,6 +829,26 @@ function renderProfile(data: KickChannelData) {
           <div class="stat-card__value">${formatNumber(data.followers_count || 0)}</div>
           <div class="stat-card__label">Followers</div>
         </div>
+        ${data.account_type === 'viewer' ? `
+        <div class="stat-card">
+          <div class="stat-card__value" style="color: #4d9fff; font-size: 1.15rem; font-weight: 800;">Viewer</div>
+          <div class="stat-card__label">Account Role</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card__value" style="color: var(--kick-green); font-size: 1.15rem; font-weight: 800;">Clean</div>
+          <div class="stat-card__label">Account Status</div>
+        </div>
+        ${data.created_at ? `
+        <div class="stat-card">
+          <div class="stat-card__value" style="font-size: 0.95rem; font-weight: 700;">${formatDate(data.created_at)}</div>
+          <div class="stat-card__label">Member Since</div>
+        </div>
+        ` : ''}
+        <div class="stat-card">
+          <div class="stat-card__value">${data.previous_usernames?.length || 0}</div>
+          <div class="stat-card__label">Name Changes</div>
+        </div>
+        ` : `
         ${isLive ? `
         <div class="stat-card">
           <div class="stat-card__value" style="color: var(--status-live);">${formatNumber(data.livestream!.viewer_count)}</div>
@@ -818,6 +873,7 @@ function renderProfile(data: KickChannelData) {
           <div class="stat-card__value">${data.previous_usernames?.length || 0}</div>
           <div class="stat-card__label">Name Changes</div>
         </div>
+        `}
       </div>
 
       <!-- Subscriber Stats Section (if official counts available) -->
@@ -931,6 +987,28 @@ function renderSubscriberStatsSection(data: KickChannelData): string {
 }
 
 function renderLivestreamSection(data: KickChannelData): string {
+  if (data.account_type === 'viewer') {
+    return `
+    <div class="section-card">
+      <div class="section-card__header">
+        <div class="section-card__icon section-card__icon--blue">👤</div>
+        <div class="section-card__title">Watcher Profile</div>
+        <span class="section-card__count" style="color:#4d9fff; background:rgba(77,159,255,0.1);">Community Viewer</span>
+      </div>
+      <div class="section-card__body">
+        <div class="section-card__empty" style="text-align: left; padding: 12px 18px;">
+          <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">
+            ${escapeHtml(data.user.username)}
+          </div>
+          <p style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.6;">
+            This account is registered on Kick as a community viewer. Viewers use their accounts to watch livestreams, participate in chatrooms, and support creators. No broadcast streams have been started on this channel.
+          </p>
+        </div>
+      </div>
+    </div>
+    `
+  }
+
   const ls = data.livestream
   if (!ls || !ls.is_live) {
     return `
@@ -983,6 +1061,22 @@ function renderLivestreamSection(data: KickChannelData): string {
 }
 
 function renderSubscriberBadgesSection(data: KickChannelData): string {
+  if (data.account_type === 'viewer') {
+    return `
+    <div class="section-card">
+      <div class="section-card__header">
+        <div class="section-card__icon section-card__icon--purple">🏅</div>
+        <div class="section-card__title">Channel Subscriptions</div>
+      </div>
+      <div class="section-card__body">
+        <div class="section-card__empty">
+          Viewer account — Custom subscriber badge tiers are only created by affiliate & partnered broadcast streamers.
+        </div>
+      </div>
+    </div>
+    `
+  }
+
   const badges = data.subscriber_badges || []
 
   if (badges.length === 0) {

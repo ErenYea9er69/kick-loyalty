@@ -157,9 +157,39 @@ function getActiveToken() {
 // Kick API Calls
 // ============================
 
-// v2 Internal API
+// v2 Internal Channel API (supports underscore/hyphen slug variations)
 async function fetchV2Channel(slug) {
-  const url = `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`
+  const variations = [slug]
+  if (slug.includes('_')) variations.push(slug.replace(/_/g, '-'))
+  if (slug.includes('-')) variations.push(slug.replace(/-/g, '_'))
+
+  for (const s of variations) {
+    const url = `https://kick.com/api/v2/channels/${encodeURIComponent(s)}`
+    try {
+      const response = await httpsRequest(url, {
+        headers: {
+          'Accept': 'application/json',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+          'Referer': 'https://kick.com/',
+          'Sec-Fetch-Dest': 'empty',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Site': 'same-origin',
+        }
+      })
+      if (response.status === 200) {
+        return JSON.parse(response.body)
+      }
+    } catch {
+      // Continue to next variation
+    }
+  }
+  return null
+}
+
+// v1 Public User API (finds viewers/watchers directly by username)
+async function fetchV1User(username) {
+  const url = `https://kick.com/api/v1/users/${encodeURIComponent(username)}`
   try {
     const response = await httpsRequest(url, {
       headers: {
@@ -183,20 +213,27 @@ async function fetchV2Channel(slug) {
 
 // Official Kick Public API
 async function fetchOfficialChannel(slug, token) {
-  const url = `https://api.kick.com/public/v1/channels?slug=${encodeURIComponent(slug)}`
-  try {
-    const response = await httpsRequest(url, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-    if (response.status === 200) {
-      const parsed = JSON.parse(response.body)
-      return parsed.data || parsed
+  const variations = [slug]
+  if (slug.includes('_')) variations.push(slug.replace(/_/g, '-'))
+  if (slug.includes('-')) variations.push(slug.replace(/-/g, '_'))
+
+  for (const s of variations) {
+    const url = `https://api.kick.com/public/v1/channels?slug=${encodeURIComponent(s)}`
+    try {
+      const response = await httpsRequest(url, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (response.status === 200) {
+        const parsed = JSON.parse(response.body)
+        const data = parsed.data || parsed
+        if (Array.isArray(data) && data.length > 0) return data
+        if (!Array.isArray(data) && data) return data
+      }
+    } catch (err) {
+      console.log(`[KickView] Official channel API error: ${err.message}`)
     }
-    return null
-  } catch (err) {
-    console.log(`[KickView] Official channel API error: ${err.message}`)
-    return null
   }
+  return null
 }
 
 async function fetchOfficialLivestreams(broadcasterUserId, token) {
@@ -444,6 +481,7 @@ app.get('/api/channel/:slug', async (req, res) => {
 
   let officialData = null
   let v2Data = null
+  let v1UserData = null
   let livestreamData = null
 
   // 1) Try Official Public API if token is available
@@ -468,68 +506,102 @@ app.get('/api/channel/:slug', async (req, res) => {
     }
   }
 
-  // 2) Try v2 internal API for rich data (badges, previous usernames, chatroom config)
+  // 2) Try v2 internal API for rich channel data (trying slug and slug-with-hyphens)
   console.log('[KickView] Trying v2 internal API...')
   v2Data = await fetchV2Channel(cleanSlug)
   if (v2Data) {
-    console.log(`[KickView] ✅ v2 API returned data for: ${cleanSlug}`)
+    console.log(`[KickView] ✅ v2 API returned channel data for: ${cleanSlug}`)
   } else {
-    console.log('[KickView] ℹ️ v2 API returned nothing (Cloudflare protection)')
+    console.log('[KickView] ℹ️ v2 API returned nothing for channel')
   }
 
-  // 3) Check Sample / Fallback if neither API returned live data
-  if (!officialData && !v2Data) {
+  // 3) Try v1 Public User API (especially for watchers/viewers who have accounts and avatars)
+  console.log('[KickView] Trying v1 user API...')
+  v1UserData = await fetchV1User(cleanSlug)
+  if (v1UserData) {
+    console.log(`[KickView] ✅ v1 user API returned data for: ${cleanSlug}`)
+  }
+
+  // 4) Check Sample / Fallback if neither API returned live data
+  if (!officialData && !v2Data && !v1UserData) {
     if (SAMPLE_CHANNELS[cleanSlug]) {
       console.log(`[KickView] ⚡ Returning rich sample profile for: ${cleanSlug}`)
       return res.json(SAMPLE_CHANNELS[cleanSlug])
     }
 
     return res.status(404).json({
-      error: `Could not load live data for "${cleanSlug}". Kick requires API credentials or Cloudflare blocked scraping. You can configure your free Kick API keys in "Configure API", or test one of the instant sample profiles (xQc, Trainwreckstv, AdinRoss, Amouranth).`
+      error: `Could not load live data for "${cleanSlug}". Kick requires API credentials or user does not exist. Click "Configure API" to add Kick Developer credentials, or try sample profiles like xQc or Trainwreckstv.`
     })
   }
 
-  // 4) Merge available data
+  // 5) Merge available data
   const channel = v2Data || {}
   const official = Array.isArray(officialData) ? officialData[0] : (officialData || {})
   const livestream = Array.isArray(livestreamData) ? livestreamData[0] : livestreamData
+  const u1 = v1UserData || {}
+
+  // Determine if this is primarily a watcher/viewer account vs an active streamer
+  const isWatcher = !channel.livestream?.is_live &&
+    (channel.followers_count == null || channel.followers_count < 25) &&
+    !channel.subscription_enabled &&
+    !channel.is_affiliate &&
+    (!channel.subscriber_badges || channel.subscriber_badges.length === 0)
+
+  // Construct user profile
+  const user = channel.user || {
+    id: u1.id || official.broadcaster_user_id || channel.user_id,
+    username: u1.username || official.slug || cleanSlug,
+    profile_pic: u1.profilepic || null,
+    bio: u1.bio || official.channel_description || null,
+    instagram: u1.instagram || null,
+    twitter: u1.twitter || null,
+    youtube: u1.youtube || null,
+    discord: u1.discord || null,
+    tiktok: u1.tiktok || null,
+    facebook: u1.facebook || null,
+    country: null, state: null, city: null,
+  }
+
+  // If user object has no profile pic or it's default, and u1 has S3 profilepic, use it!
+  if (u1.profilepic && (!user.profile_pic || user.profile_pic.includes('default-avatar'))) {
+    user.profile_pic = u1.profilepic
+  }
+  if (u1.username) {
+    user.username = u1.username
+  }
 
   const merged = {
-    id: channel.id || official.broadcaster_user_id,
-    user_id: channel.user_id || official.broadcaster_user_id,
-    slug: channel.slug || official.slug || cleanSlug,
+    id: channel.id || u1.id || official.broadcaster_user_id,
+    user_id: channel.user_id || u1.id || official.broadcaster_user_id,
+    slug: channel.slug || u1.username || official.slug || cleanSlug,
+
+    // Account role
+    account_type: isWatcher ? 'viewer' : 'streamer',
+    created_at: channel.chatroom?.created_at || null,
 
     // Official API Subscriber metrics
     active_subscribers_count: official.active_subscribers_count ?? null,
     active_gifted_subscribers_count: official.active_gifted_subscribers_count ?? null,
     canceled_subscribers_count: official.canceled_subscribers_count ?? null,
-    channel_description: official.channel_description || null,
+    channel_description: official.channel_description || user.bio || null,
     stream_title: official.stream_title || channel.livestream?.session_title || null,
 
     // Flags & Metrics
     is_banned: channel.is_banned ?? false,
-    verified: channel.verified ?? null,
-    vod_enabled: channel.vod_enabled ?? null,
-    subscription_enabled: channel.subscription_enabled ?? null,
-    can_host: channel.can_host ?? null,
+    verified: channel.verified ?? false,
+    vod_enabled: channel.vod_enabled ?? false,
+    subscription_enabled: channel.subscription_enabled ?? false,
+    can_host: channel.can_host ?? false,
     muted: channel.muted ?? false,
     playback_url: channel.playback_url || null,
-    followers_count: channel.followers_count ?? null,
+    followers_count: channel.followers_count ?? 0,
 
     // Images
     banner_image: channel.banner_image || (official.banner_picture ? { url: official.banner_picture } : null),
     offline_banner_image: channel.offline_banner_image || null,
 
     // User details
-    user: channel.user || {
-      id: official.broadcaster_user_id,
-      username: official.slug || cleanSlug,
-      profile_pic: null,
-      bio: official.channel_description || null,
-      instagram: null, twitter: null, youtube: null,
-      discord: null, tiktok: null, facebook: null,
-      country: null, state: null, city: null,
-    },
+    user,
 
     // Rich v2 platform data
     subscriber_badges: channel.subscriber_badges || [],
@@ -562,6 +634,7 @@ app.get('/api/channel/:slug', async (req, res) => {
     _sources: {
       official: !!officialData,
       v2: !!v2Data,
+      v1_user: !!v1UserData,
       sample: false,
     }
   }
