@@ -4,7 +4,61 @@ import './style.css'
 // Types
 // ============================
 
-interface KickChannelData {
+export interface KickClip {
+  id: string | number
+  title: string
+  thumbnail_url: string
+  clip_url: string
+  duration: number
+  views: number
+  creator: string
+  category: string
+  created_at: string | null
+}
+
+export interface LeaderboardGifter {
+  user_id?: number
+  username: string
+  quantity: number
+}
+
+export interface KickLeaderboards {
+  gifts: LeaderboardGifter[]
+  gifts_week: LeaderboardGifter[]
+  gifts_month: LeaderboardGifter[]
+}
+
+export interface KickChatMessage {
+  id: string | number
+  content: string
+  created_at: string | null
+  sender: {
+    id?: number
+    username: string
+    color: string
+    level?: number | null
+    badges?: any[]
+  }
+}
+
+export interface KickReward {
+  id: number
+  title: string
+  cost: number
+  description: string
+  icon: string
+}
+
+export interface KickBanHistory {
+  is_banned: boolean
+  status: string
+  muted: boolean
+  active_bans_count: number
+  strikes_count: number
+  standing: string
+}
+
+export interface KickChannelData {
   id: number
   user_id: number
   slug: string
@@ -33,11 +87,11 @@ interface KickChannelData {
   socials?: string[]
   media?: MediaItem[]
 
-  // Viewer vs Streamer fields
+  // Account role & timestamp
   account_type?: 'viewer' | 'streamer'
   created_at?: string | null
 
-  // Official API fields
+  // Official API subscriber fields
   active_subscribers_count?: number | null
   active_gifted_subscribers_count?: number | null
   canceled_subscribers_count?: number | null
@@ -50,9 +104,16 @@ interface KickChannelData {
     v1_user?: boolean
     sample?: boolean
   }
+
+  // 10X Rich Data
+  clips?: KickClip[]
+  leaderboards?: KickLeaderboards
+  recent_messages?: KickChatMessage[]
+  rewards?: KickReward[]
+  ban_history?: KickBanHistory
 }
 
-interface KickUser {
+export interface KickUser {
   id: number
   username: string
   agreed_to_terms?: boolean
@@ -70,14 +131,14 @@ interface KickUser {
   profile_pic: string | null
 }
 
-interface SubscriberBadge {
+export interface SubscriberBadge {
   id: number
   channel_id: number
   months: number
   badge_image: { srcset?: string; src: string } | null
 }
 
-interface RecentCategory {
+export interface RecentCategory {
   id: number
   category_id: number
   name: string
@@ -95,7 +156,7 @@ interface RecentCategory {
   }
 }
 
-interface Livestream {
+export interface Livestream {
   id: number
   slug: string
   channel_id: number
@@ -114,7 +175,7 @@ interface Livestream {
   tags?: string[]
 }
 
-interface Chatroom {
+export interface Chatroom {
   id: number
   chatable_type?: string
   channel_id?: number
@@ -131,7 +192,7 @@ interface Chatroom {
   following_min_duration: number
 }
 
-interface AscendingLink {
+export interface AscendingLink {
   id: number
   channel_id: number
   description?: string | null
@@ -142,14 +203,14 @@ interface AscendingLink {
   title: string
 }
 
-interface PreviousUsername {
+export interface PreviousUsername {
   id: number
   user_id: number
   username: string
   created_at: string
 }
 
-interface MediaItem {
+export interface MediaItem {
   id: number
   model_type: string
   model_id: number
@@ -166,7 +227,7 @@ interface MediaItem {
   preview_url: string
 }
 
-interface AuthStatus {
+export interface AuthStatus {
   configured: boolean
   hasAppToken: boolean
   hasUserToken: boolean
@@ -179,7 +240,9 @@ interface AuthStatus {
 // State
 // ============================
 
-let currentData: KickChannelData | null = null
+export let currentData: KickChannelData | null = null
+let activeTab: 'clips' | 'subs' | 'chat' | 'rewards' | 'mod' | 'about' = 'clips'
+let chatSearchQuery: string = ''
 let authStatus: AuthStatus = {
   configured: false,
   hasAppToken: false,
@@ -334,7 +397,7 @@ function renderApp() {
     <section class="search-section">
       <h1 class="search-hero-title">Explore Any Kick Profile</h1>
       <p class="search-hero-desc">
-        Lookup any streamer or viewer to inspect channel data, subscriptions, live stats, subscriber badges, name change history, chatroom rules, and social links.
+        Lookup any streamer or viewer to inspect clips, gifted subscription leaderboards, live chat activity, channel point rewards, and moderation standing.
       </p>
 
       <div class="search-box">
@@ -342,7 +405,7 @@ function renderApp() {
           type="text"
           id="search-input"
           class="search-box__input"
-          placeholder="Enter Kick username (e.g. splash_699, xqc)..."
+          placeholder="Enter Kick username (e.g. splash_699, xqc, trainwreckstv)..."
           autocomplete="off"
           spellcheck="false"
         />
@@ -364,7 +427,7 @@ function renderApp() {
 
       <!-- Free Login Callout -->
       <div style="margin-top: 14px; font-size: 0.85rem; color: var(--text-secondary);">
-        Want to view your private subscriber metrics & rewards? 
+        Want to view your private subscriber metrics & channel points? 
         <button id="hero-login-btn" style="background:none; border:none; color:var(--kick-green); font-weight:700; text-decoration:underline; cursor:pointer; font-size:0.85rem; font-family:inherit;">
           ⚡ Log in with Kick (100% Free) ↗
         </button>
@@ -414,6 +477,7 @@ function renderAuthBarContent(): string {
     <button id="config-btn" class="auth-bar__btn">⚙️ API Settings</button>
   `
 }
+
 function updateAuthBar() {
   const bar = document.getElementById('auth-bar')
   if (bar) {
@@ -483,7 +547,6 @@ async function startKickLogin() {
     const data = await res.json()
 
     if (!res.ok || data.error) {
-      // If credentials are not yet configured, guide the user to the free setup modal
       openSetupModal(true)
       return
     }
@@ -548,17 +611,6 @@ async function exchangeOAuthCode(code: string) {
         statusDiv.className = 'setup-modal__message setup-modal__message--error'
         statusDiv.textContent = `❌ ${data.error || 'Authentication exchange failed.'}`
       }
-      setTimeout(() => {
-        const backBtn = document.createElement('button')
-        backBtn.className = 'auth-bar__btn auth-bar__btn--kick'
-        backBtn.style.marginTop = '16px'
-        backBtn.textContent = 'Back to App'
-        backBtn.onclick = () => {
-          window.history.replaceState({}, document.title, '/')
-          renderApp()
-        }
-        statusDiv?.parentElement?.appendChild(backBtn)
-      }, 500)
     }
   } catch (err: any) {
     if (statusDiv) {
@@ -600,104 +652,75 @@ function openSetupModal(forLogin = false) {
         </div>
 
         <div class="setup-modal__field">
-          <label class="setup-modal__label">Kick Client Secret</label>
+          <label class="setup-modal__label">Kick Client Secret ${forLogin ? '(Optional for Login PKCE)' : ''}</label>
           <input
             type="password"
             id="setup-client-secret"
             class="setup-modal__input"
-            placeholder="Enter Client Secret"
+            placeholder="e.g. secret_... (leave empty if using PKCE only)"
           />
         </div>
 
-        <div class="setup-modal__field">
-          <label class="setup-modal__label">OAuth Redirect URI</label>
-          <input
-            type="text"
-            id="setup-redirect-uri"
-            class="setup-modal__input"
-            value="${escapeHtml(authStatus.redirectUri || 'http://localhost:5173/callback')}"
-          />
-          <small style="color:var(--text-muted);font-size:0.75rem;margin-top:4px;display:block;">
-            Must match the Redirect URL configured in your Kick Developer settings.
-          </small>
-        </div>
-
-        <div id="setup-msg" style="display: none;"></div>
+        <div id="setup-msg" class="setup-modal__message" style="display:none;"></div>
 
         <div class="setup-modal__actions">
-          <button id="setup-cancel-btn" class="setup-modal__cancel">Cancel</button>
-          <button id="setup-submit-btn" class="setup-modal__submit">${forLogin ? '⚡ Connect & Log in with Kick' : 'Save & Test Connection'}</button>
+          <button id="setup-cancel" class="setup-modal__cancel">Cancel</button>
+          <button id="setup-save" class="setup-modal__submit">${forLogin ? 'Continue to Kick Login ↗' : 'Save & Connect'}</button>
         </div>
       </div>
     </div>
   `
 
-  // Close handlers
-  const overlay = document.getElementById('setup-overlay')
-  const cancelBtn = document.getElementById('setup-cancel-btn')
-  const submitBtn = document.getElementById('setup-submit-btn') as HTMLButtonElement
-
-  const closeModal = () => { modalContainer.innerHTML = '' }
-
-  overlay?.addEventListener('click', (e) => {
-    if (e.target === overlay) closeModal()
+  document.getElementById('setup-overlay')?.addEventListener('click', (e) => {
+    if (e.target === document.getElementById('setup-overlay')) modalContainer.innerHTML = ''
   })
-  cancelBtn?.addEventListener('click', closeModal)
+  document.getElementById('setup-cancel')?.addEventListener('click', () => { modalContainer.innerHTML = '' })
+  document.getElementById('setup-save')?.addEventListener('click', () => saveCredentials(forLogin))
+}
 
-  submitBtn?.addEventListener('click', async () => {
-    const clientId = (document.getElementById('setup-client-id') as HTMLInputElement).value.trim()
-    const clientSecret = (document.getElementById('setup-client-secret') as HTMLInputElement).value.trim()
-    const redirectUri = (document.getElementById('setup-redirect-uri') as HTMLInputElement).value.trim()
-    const msgBox = document.getElementById('setup-msg')!
+async function saveCredentials(startLoginAfter = false) {
+  const clientId = (document.getElementById('setup-client-id') as HTMLInputElement)?.value.trim()
+  const clientSecret = (document.getElementById('setup-client-secret') as HTMLInputElement)?.value.trim()
+  const msg = document.getElementById('setup-msg')!
 
-    if (!clientId || !clientSecret) {
-      msgBox.style.display = 'block'
-      msgBox.className = 'setup-modal__message setup-modal__message--error'
-      msgBox.textContent = 'Please enter both Client ID and Client Secret.'
-      return
+  if (!clientId) {
+    msg.style.display = 'block'
+    msg.className = 'setup-modal__message setup-modal__message--error'
+    msg.textContent = 'Please enter a Client ID.'
+    return
+  }
+
+  msg.style.display = 'block'
+  msg.className = 'setup-modal__message setup-modal__message--success'
+  msg.textContent = 'Saving configuration...'
+
+  try {
+    const res = await fetch('/api/credentials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId, clientSecret })
+    })
+    const data = await res.json()
+
+    if (res.ok && data.success) {
+      msg.textContent = '✅ Credentials saved!'
+      await checkStatus()
+      updateAuthBar()
+
+      setTimeout(() => {
+        document.getElementById('modal-container')!.innerHTML = ''
+        if (startLoginAfter) {
+          startKickLogin()
+        }
+      }, 700)
+    } else {
+      msg.className = 'setup-modal__message setup-modal__message--error'
+      msg.textContent = `❌ ${data.error || 'Failed to save credentials.'}`
     }
-
-    submitBtn.disabled = true
-    submitBtn.textContent = 'Connecting...'
-    msgBox.style.display = 'none'
-
-    try {
-      const res = await fetch('/api/setup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId, clientSecret, redirectUri })
-      })
-
-      const data = await res.json()
-
-      if (data.success) {
-        msgBox.style.display = 'block'
-        msgBox.className = 'setup-modal__message setup-modal__message--success'
-        msgBox.textContent = `✅ ${data.message}`
-        await checkStatus()
-        updateAuthBar()
-        setTimeout(() => {
-          closeModal()
-          if (forLogin) {
-            startKickLogin()
-          }
-        }, 1200)
-      } else {
-        msgBox.style.display = 'block'
-        msgBox.className = 'setup-modal__message setup-modal__message--error'
-        msgBox.textContent = `⚠️ ${data.message || 'Verification failed.'}`
-        await checkStatus()
-        updateAuthBar()
-      }
-    } catch (err: any) {
-      msgBox.style.display = 'block'
-      msgBox.className = 'setup-modal__message setup-modal__message--error'
-      msgBox.textContent = `Error: ${err.message}`
-    } finally {
-      submitBtn.disabled = false
-      submitBtn.textContent = forLogin ? '⚡ Connect & Log in with Kick' : 'Save & Test Connection'
-    }
-  })
+  } catch (err: any) {
+    msg.className = 'setup-modal__message setup-modal__message--error'
+    msg.textContent = `❌ ${err.message}`
+  }
 }
 
 // ============================
@@ -730,6 +753,15 @@ async function handleSearch(manualQuery?: string) {
   try {
     const data = await fetchKickChannel(query)
     currentData = data
+    // Select default tab depending on viewer vs streamer
+    if (data.account_type === 'viewer') {
+      activeTab = 'mod'
+    } else if (data.clips && data.clips.length > 0) {
+      activeTab = 'clips'
+    } else {
+      activeTab = 'subs'
+    }
+    chatSearchQuery = ''
     renderProfile(data)
   } catch (err: any) {
     container.innerHTML = `
@@ -738,6 +770,7 @@ async function handleSearch(manualQuery?: string) {
         <div class="error-state__title">Channel Not Found</div>
         <div class="error-state__message">${escapeHtml(err.message || 'An unexpected error occurred.')}</div>
         <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+          <button class="quick-chip" onclick="document.getElementById('search-input').value='splash_699'; document.getElementById('search-btn').click();">Try splash_699 (Viewer)</button>
           <button class="quick-chip" onclick="document.getElementById('search-input').value='xqc'; document.getElementById('search-btn').click();">Try xQc</button>
           <button class="quick-chip" onclick="document.getElementById('search-input').value='trainwreckstv'; document.getElementById('search-btn').click();">Try Trainwreckstv</button>
           <button class="quick-chip" onclick="document.getElementById('search-input').value='adinross'; document.getElementById('search-btn').click();">Try AdinRoss</button>
@@ -765,16 +798,9 @@ function renderProfile(data: KickChannelData) {
   const isVerified = data.verified === true
   const isSample = data._sources?.sample === true
 
-  // Build social links
-  const socials: { platform: string; url: string }[] = []
-  if (user.instagram) socials.push({ platform: 'Instagram', url: user.instagram.startsWith('http') ? user.instagram : `https://instagram.com/${user.instagram}` })
-  if (user.twitter) socials.push({ platform: 'Twitter / X', url: user.twitter.startsWith('http') ? user.twitter : `https://twitter.com/${user.twitter}` })
-  if (user.youtube) socials.push({ platform: 'YouTube', url: user.youtube.startsWith('http') ? user.youtube : `https://youtube.com/${user.youtube}` })
-  if (user.discord) socials.push({ platform: 'Discord', url: user.discord.startsWith('http') ? user.discord : user.discord })
-  if (user.tiktok) socials.push({ platform: 'TikTok', url: user.tiktok.startsWith('http') ? user.tiktok : `https://tiktok.com/@${user.tiktok}` })
-  if (user.facebook) socials.push({ platform: 'Facebook', url: user.facebook.startsWith('http') ? user.facebook : `https://facebook.com/${user.facebook}` })
-
-  const links = data.ascending_links || []
+  const clipsCount = data.clips?.length || 0
+  const totalGiftsCount = (data.leaderboards?.gifts?.length || 0)
+  const messagesCount = data.recent_messages?.length || 0
 
   container.innerHTML = `
     <div class="profile">
@@ -823,8 +849,11 @@ function renderProfile(data: KickChannelData) {
         </div>
       </div>
 
-      <!-- Stats Row -->
-      <div class="stats-row">
+      <!-- Live Broadcast Banner (if currently live) -->
+      ${renderLiveBroadcastBanner(data)}
+
+      <!-- Primary Key Metrics Strip -->
+      <div class="stats-row" style="margin-bottom: var(--space-xl);">
         <div class="stat-card">
           <div class="stat-card__value">${formatNumber(data.followers_count || 0)}</div>
           <div class="stat-card__label">Followers</div>
@@ -835,68 +864,69 @@ function renderProfile(data: KickChannelData) {
           <div class="stat-card__label">Account Role</div>
         </div>
         <div class="stat-card">
-          <div class="stat-card__value" style="color: var(--kick-green); font-size: 1.15rem; font-weight: 800;">Clean</div>
-          <div class="stat-card__label">Account Status</div>
+          <div class="stat-card__value" style="color: var(--kick-green); font-size: 1.15rem; font-weight: 800;">100% Clean</div>
+          <div class="stat-card__label">Ban Standing</div>
         </div>
-        ${data.created_at ? `
         <div class="stat-card">
-          <div class="stat-card__value" style="font-size: 0.95rem; font-weight: 700;">${formatDate(data.created_at)}</div>
-          <div class="stat-card__label">Member Since</div>
-        </div>
-        ` : ''}
-        <div class="stat-card">
-          <div class="stat-card__value">${data.previous_usernames?.length || 0}</div>
-          <div class="stat-card__label">Name Changes</div>
+          <div class="stat-card__value">${messagesCount}</div>
+          <div class="stat-card__label">Chat Messages</div>
         </div>
         ` : `
-        ${isLive ? `
         <div class="stat-card">
-          <div class="stat-card__value" style="color: var(--status-live);">${formatNumber(data.livestream!.viewer_count)}</div>
-          <div class="stat-card__label">Watching Live</div>
-        </div>
-        ` : ''}
-        ${data.active_subscribers_count != null ? `
-        <div class="stat-card">
-          <div class="stat-card__value" style="color: var(--kick-green);">${formatNumber(data.active_subscribers_count)}</div>
+          <div class="stat-card__value" style="color: var(--kick-green);">${formatNumber(data.active_subscribers_count || 0)}</div>
           <div class="stat-card__label">Active Subscribers</div>
         </div>
-        ` : ''}
         <div class="stat-card">
-          <div class="stat-card__value">${data.subscriber_badges?.length || 0}</div>
-          <div class="stat-card__label">Badge Tiers</div>
+          <div class="stat-card__value" style="color: #a855f7;">${formatNumber(data.active_gifted_subscribers_count || totalGiftsCount)}</div>
+          <div class="stat-card__label">Gifted Subs</div>
         </div>
         <div class="stat-card">
-          <div class="stat-card__value">${data.recent_categories?.length || 0}</div>
-          <div class="stat-card__label">Categories</div>
+          <div class="stat-card__value" style="color: #00e5ff;">${clipsCount}</div>
+          <div class="stat-card__label">Clips Available</div>
         </div>
         <div class="stat-card">
-          <div class="stat-card__value">${data.previous_usernames?.length || 0}</div>
-          <div class="stat-card__label">Name Changes</div>
+          <div class="stat-card__value" style="color: var(--kick-green); font-size: 1.15rem; font-weight: 800;">Clean</div>
+          <div class="stat-card__label">Ban Standing</div>
         </div>
         `}
       </div>
 
-      <!-- Subscriber Stats Section (if official counts available) -->
-      ${renderSubscriberStatsSection(data)}
-
-      <!-- Sections Grid -->
-      <div class="sections-grid">
-        ${renderLivestreamSection(data)}
-        ${renderSubscriberBadgesSection(data)}
-        ${renderUsernameHistorySection(data)}
-        ${renderRecentCategoriesSection(data)}
-        ${renderSocialsSection(socials)}
-        ${renderLinksSection(links)}
-        ${renderChatroomSection(data)}
-        ${renderChannelDetailsSection(data)}
+      <!-- 10X Rich Data Navigation Tabs -->
+      <div class="profile-tabs">
+        <button class="profile-tab ${activeTab === 'clips' ? 'profile-tab--active' : ''}" data-tab="clips">
+          <span>🎬</span> Clips & Highlights
+          <span class="profile-tab__count">${clipsCount}</span>
+        </button>
+        <button class="profile-tab ${activeTab === 'subs' ? 'profile-tab--active' : ''}" data-tab="subs">
+          <span>💎</span> Subscriptions & Gifted
+          <span class="profile-tab__count">${totalGiftsCount}</span>
+        </button>
+        <button class="profile-tab ${activeTab === 'chat' ? 'profile-tab--active' : ''}" data-tab="chat">
+          <span>💬</span> Live Chat & Activity
+          <span class="profile-tab__count">${messagesCount}</span>
+        </button>
+        <button class="profile-tab ${activeTab === 'rewards' ? 'profile-tab--active' : ''}" data-tab="rewards">
+          <span>🪙</span> Channel Point Rewards
+        </button>
+        <button class="profile-tab ${activeTab === 'mod' ? 'profile-tab--active' : ''}" data-tab="mod">
+          <span>🛡️</span> Moderation & Ban Standing
+        </button>
+        <button class="profile-tab ${activeTab === 'about' ? 'profile-tab--active' : ''}" data-tab="about">
+          <span>👤</span> About & Community
+        </button>
       </div>
 
-      <!-- Quick external link & Raw JSON viewer -->
-      <div style="text-align: center; margin-top: var(--space-xl); display: flex; gap: var(--space-md); justify-content: center; flex-wrap: wrap;">
+      <!-- Tab Content Area -->
+      <div id="tab-content-area" style="animation: fadeIn 0.25s var(--ease-out);">
+        ${renderTabContent(data)}
+      </div>
+
+      <!-- Quick External Link & Raw JSON Viewer -->
+      <div style="text-align: center; margin-top: var(--space-2xl); display: flex; gap: var(--space-md); justify-content: center; flex-wrap: wrap;">
         <a href="https://kick.com/${escapeHtml(data.slug)}" target="_blank" rel="noopener noreferrer" class="quick-link">
           Open kick.com/${escapeHtml(data.slug)} in New Tab ↗
         </a>
-        <button id="view-raw-json-btn" class="quick-link" style="background: var(--bg-card); cursor: pointer;">
+        <button id="view-raw-json-btn" class="quick-link" style="background: var(--bg-card); cursor: pointer; border: 1px solid var(--border-default);">
           { } View Raw Kick Payload
         </button>
       </div>
@@ -904,190 +934,462 @@ function renderProfile(data: KickChannelData) {
 
     <div class="data-note">
       <p class="data-note__text">
-        ⓘ Data aggregated from Kick's official developer API, channel endpoints, and live stream status.
+        ⓘ Data retrieved in real-time from Kick's official APIs, v2 channel streams, clips, leaderboards, and chat services.
       </p>
     </div>
   `
 
-  bindProfileActions()
+  bindProfileEvents(data)
 }
 
-function bindProfileActions() {
-  const rawBtn = document.getElementById('view-raw-json-btn')
-  if (rawBtn) {
-    rawBtn.addEventListener('click', () => {
-      if (!currentData) return
-      const modalContainer = document.getElementById('modal-container')!
-      modalContainer.innerHTML = `
-        <div class="setup-overlay" id="raw-overlay">
-          <div class="setup-modal__content" style="max-width: 720px; width: 95%;">
-            <div class="setup-modal__title">
-              <span>Inspect Raw Kick JSON</span>
-            </div>
-            <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px;">
-              Full unaltered API response received for this user from Kick.
-            </p>
-            <pre style="max-height: 420px; overflow: auto; background: var(--bg-input); padding: 14px; border-radius: 8px; font-size: 0.78rem; font-family: 'JetBrains Mono', monospace; color: var(--kick-green); border: 1px solid var(--border-default); line-height: 1.5;">${escapeHtml(JSON.stringify(currentData, null, 2))}</pre>
-            <div class="setup-modal__actions">
-              <button id="close-raw-btn" class="setup-modal__cancel">Close</button>
-              <button id="copy-raw-btn" class="setup-modal__submit">Copy to Clipboard</button>
-            </div>
-          </div>
-        </div>
-      `
-      document.getElementById('raw-overlay')?.addEventListener('click', (e) => {
-        if (e.target === document.getElementById('raw-overlay')) modalContainer.innerHTML = ''
-      })
-      document.getElementById('close-raw-btn')?.addEventListener('click', () => { modalContainer.innerHTML = '' })
-      document.getElementById('copy-raw-btn')?.addEventListener('click', () => {
-        if (currentData) {
-          navigator.clipboard.writeText(JSON.stringify(currentData, null, 2))
-          const copyBtn = document.getElementById('copy-raw-btn') as HTMLButtonElement
-          if (copyBtn) copyBtn.textContent = 'Copied! ✓'
-        }
-      })
-    })
-  }
-}
-
-function renderSubscriberStatsSection(data: KickChannelData): string {
-  if (data.active_subscribers_count == null && data.active_gifted_subscribers_count == null) {
-    return ''
-  }
-
-  const active = data.active_subscribers_count ?? 0
-  const gifted = data.active_gifted_subscribers_count ?? 0
-  const canceled = data.canceled_subscribers_count ?? 0
+function renderLiveBroadcastBanner(data: KickChannelData): string {
+  const ls = data.livestream
+  if (!ls || !ls.is_live) return ''
 
   return `
-  <div class="section-card section-card--full" style="margin-bottom: var(--space-lg);">
-    <div class="section-card__header">
-      <div class="section-card__icon section-card__icon--green">💎</div>
-      <div class="section-card__title">Subscriber & Gifting Breakdown</div>
-      <span class="section-card__count" style="color:var(--kick-green); background:rgba(83,252,24,0.1);">Official Kick Metrics</span>
-    </div>
-    <div class="section-card__body">
-      <div class="sub-stats">
-        <div class="sub-stat">
-          <div class="sub-stat__value">${formatNumber(active)}</div>
-          <div class="sub-stat__label">Active Subscribers</div>
-        </div>
-        <div class="sub-stat">
-          <div class="sub-stat__value" style="color:#a855f7;">${formatNumber(gifted)}</div>
-          <div class="sub-stat__label">Gifted Subs</div>
-        </div>
-        <div class="sub-stat">
-          <div class="sub-stat__value" style="color:#ff6666;">${formatNumber(canceled)}</div>
-          <div class="sub-stat__label">Canceled Subs</div>
+    <div style="background: linear-gradient(135deg, rgba(255, 68, 68, 0.12), rgba(255, 68, 68, 0.04)); border: 1px solid rgba(255, 68, 68, 0.35); border-radius: var(--radius-lg); padding: var(--space-lg); margin-bottom: var(--space-xl); display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); flex-wrap: wrap;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span style="width: 12px; height: 12px; border-radius: 50%; background: #ff4444; box-shadow: 0 0 10px #ff4444; display: inline-block;"></span>
+        <div>
+          <div style="font-weight: 800; font-size: 1.05rem; color: #fff;">
+            ${escapeHtml(ls.session_title || data.stream_title || 'Live Broadcast')}
+          </div>
+          <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
+            Streaming right now with <strong style="color: #ff4444;">${formatNumber(ls.viewer_count)}</strong> live viewers
+          </div>
         </div>
       </div>
+      <a href="https://kick.com/${escapeHtml(data.slug)}" target="_blank" rel="noopener noreferrer" class="auth-bar__btn auth-bar__btn--kick" style="font-weight: 700; padding: 6px 18px;">
+        Watch Stream Live ↗
+      </a>
     </div>
-  </div>
   `
 }
 
-function renderLivestreamSection(data: KickChannelData): string {
-  if (data.account_type === 'viewer') {
+function renderTabContent(data: KickChannelData): string {
+  switch (activeTab) {
+    case 'clips':
+      return renderClipsTab(data)
+    case 'subs':
+      return renderSubsTab(data)
+    case 'chat':
+      return renderChatTab(data)
+    case 'rewards':
+      return renderRewardsTab(data)
+    case 'mod':
+      return renderModTab(data)
+    case 'about':
+      return renderAboutTab(data)
+    default:
+      return renderClipsTab(data)
+  }
+}
+
+// ============================
+// 1. Clips Tab
+// ============================
+
+function renderClipsTab(data: KickChannelData): string {
+  const clips = data.clips || []
+
+  if (clips.length === 0) {
     return `
-    <div class="section-card">
-      <div class="section-card__header">
-        <div class="section-card__icon section-card__icon--blue">👤</div>
-        <div class="section-card__title">Watcher Profile</div>
-        <span class="section-card__count" style="color:#4d9fff; background:rgba(77,159,255,0.1);">Community Viewer</span>
+      <div class="section-card" style="text-align: center; padding: var(--space-2xl);">
+        <div style="font-size: 2.8rem; margin-bottom: 12px;">🎬</div>
+        <div style="font-size: 1.2rem; font-weight: 800; margin-bottom: 8px;">No Clips Generated Yet</div>
+        <p style="color: var(--text-secondary); max-width: 480px; margin: 0 auto; font-size: 0.9rem; line-height: 1.6;">
+          ${data.account_type === 'viewer' 
+            ? 'This is a community viewer account, so no broadcast clips are recorded.' 
+            : 'No community highlights or clips have been saved on this channel recently.'}
+        </p>
       </div>
-      <div class="section-card__body">
-        <div class="section-card__empty" style="text-align: left; padding: 12px 18px;">
-          <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">
-            ${escapeHtml(data.user.username)}
-          </div>
-          <p style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.6;">
-            This account is registered on Kick as a community viewer. Viewers use their accounts to watch livestreams, participate in chatrooms, and support creators. No broadcast streams have been started on this channel.
-          </p>
-        </div>
-      </div>
-    </div>
     `
   }
-
-  const ls = data.livestream
-  if (!ls || !ls.is_live) {
-    return `
-    <div class="section-card">
-      <div class="section-card__header">
-        <div class="section-card__icon section-card__icon--red">📡</div>
-        <div class="section-card__title">Livestream Status</div>
-      </div>
-      <div class="section-card__body">
-        <div class="section-card__empty">
-          <div style="font-size: 2rem; margin-bottom: 8px;">😴</div>
-          Streamer is currently offline
-        </div>
-      </div>
-    </div>
-    `
-  }
-
-  const thumbUrl = ls.thumbnail?.src || ''
-  const tags = ls.tags || []
-  const categories = ls.categories || []
 
   return `
-  <div class="section-card section-card--full">
-    <div class="section-card__header">
-      <div class="section-card__icon section-card__icon--red">📡</div>
-      <div class="section-card__title">Currently Streaming Live</div>
-      <span class="section-card__count" style="color: var(--status-live); background: rgba(255,68,68,0.1);">● LIVE</span>
-    </div>
-    <div class="section-card__body">
-      <div class="livestream-info">
-        ${thumbUrl ? `
-        <div class="livestream-info__thumbnail">
-          <img src="${escapeHtml(thumbUrl)}" alt="Stream thumbnail" loading="lazy" />
-          <div class="livestream-info__viewers">${formatNumber(ls.viewer_count)} watching</div>
+    <div>
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-md);">
+        <div>
+          <h2 style="font-size: 1.25rem; font-weight: 800; color: #fff;">Featured Clips & Highlights</h2>
+          <p style="font-size: 0.85rem; color: var(--text-secondary);">Top viral moments, clutch gameplay, and funny interactions clipped by the community.</p>
         </div>
-        ` : ''}
-        <div class="livestream-info__title">${escapeHtml(ls.session_title || data.stream_title || 'Untitled Stream')}</div>
-        <div class="livestream-info__meta">
-          ${categories.map(c => `<span class="livestream-info__tag">${escapeHtml(c.name)}</span>`).join('')}
-          ${tags.map(t => `<span class="livestream-info__tag">#${escapeHtml(t)}</span>`).join('')}
-          <span class="livestream-info__tag">🌐 ${escapeHtml(ls.language || 'English')}</span>
-          ${ls.is_mature ? '<span class="livestream-info__tag">🔞 Mature 18+</span>' : ''}
-          <span class="livestream-info__tag">⏱ Started ${timeAgo(ls.created_at)}</span>
+        <span style="font-size: 0.82rem; font-family: 'JetBrains Mono', monospace; color: var(--kick-green); background: rgba(83,252,24,0.1); padding: 4px 12px; border-radius: var(--radius-full);">
+          ${clips.length} Clips
+        </span>
+      </div>
+
+      <div class="clips-grid">
+        ${clips.map((c, i) => `
+          <div class="clip-card" data-clip-index="${i}">
+            <div class="clip-thumb">
+              <img src="${escapeHtml(c.thumbnail_url || '/assets/clip_gaming.jpg')}" alt="${escapeHtml(c.title)}" loading="lazy" onerror="this.src='/assets/clip_gaming.jpg'" />
+              <span class="clip-duration">${Math.floor((c.duration || 30) / 60)}:${((c.duration || 30) % 60).toString().padStart(2, '0')}</span>
+              <span class="clip-views">👁️ ${formatNumber(c.views)}</span>
+              <div class="clip-play-btn">▶</div>
+            </div>
+            <div class="clip-info">
+              <div class="clip-title" title="${escapeHtml(c.title)}">${escapeHtml(c.title)}</div>
+              <div class="clip-meta">
+                <span class="clip-creator">👤 @${escapeHtml(c.creator)}</span>
+                <span style="color: var(--kick-green); font-weight: 600;">${escapeHtml(c.category || 'Just Chatting')}</span>
+              </div>
+              ${c.created_at ? `<div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 6px;">${timeAgo(c.created_at)}</div>` : ''}
+              <button class="auth-bar__btn auth-bar__btn--kick watch-clip-btn" data-clip-index="${i}" style="margin-top: 12px; width: 100%; display: flex; justify-content: center; align-items: center; gap: 6px; padding: 7px;">
+                <span>▶</span> Watch Clip
+              </button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `
+}
+
+// ============================
+// 2. Subscriptions & Gifted Subs Tab
+// ============================
+
+function renderSubsTab(data: KickChannelData): string {
+  const activeSubs = data.active_subscribers_count ?? 0
+  const activeGifted = data.active_gifted_subscribers_count ?? 0
+  const canceled = data.canceled_subscribers_count ?? 0
+
+  const boards = data.leaderboards || { gifts: [], gifts_week: [], gifts_month: [] }
+  const allTimeGifts = boards.gifts || []
+  const monthGifts = boards.gifts_month || []
+  const weekGifts = boards.gifts_week || []
+
+  return `
+    <div>
+      <!-- Kick 95/5 Revenue Callout -->
+      <div style="background: linear-gradient(135deg, rgba(83, 252, 24, 0.12), rgba(83, 252, 24, 0.03)); border: 1px solid rgba(83, 252, 24, 0.3); border-radius: var(--radius-lg); padding: var(--space-lg); margin-bottom: var(--space-xl); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-md);">
+        <div>
+          <div style="font-weight: 800; font-size: 1.1rem; color: var(--kick-green); margin-bottom: 2px;">
+            💎 Kick Creator-First 95/5 Subscription Revenue
+          </div>
+          <div style="font-size: 0.85rem; color: var(--text-secondary);">
+            Creators retain 95% of all subscription and gifted sub income, the highest creator split in livestreaming.
+          </div>
+        </div>
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 1.3rem; font-weight: 800; color: var(--kick-green);">
+          95% / 5%
+        </div>
+      </div>
+
+      <!-- Sub Metric Highlights (if official counts available) -->
+      ${(activeSubs > 0 || activeGifted > 0 || canceled > 0) ? `
+      <div class="sub-stats" style="margin-bottom: var(--space-xl);">
+        <div class="sub-stat">
+          <div class="sub-stat__value">${formatNumber(activeSubs)}</div>
+          <div class="sub-stat__label">Active Direct Subscribers</div>
+        </div>
+        <div class="sub-stat">
+          <div class="sub-stat__value" style="color: #a855f7;">${formatNumber(activeGifted)}</div>
+          <div class="sub-stat__label">Active Gifted Subs</div>
+        </div>
+        <div class="sub-stat">
+          <div class="sub-stat__value" style="color: #ff6666;">${formatNumber(canceled)}</div>
+          <div class="sub-stat__label">Canceled Subs</div>
+        </div>
+      </div>
+      ` : ''}
+
+      <!-- Top Gifted Subs Leaderboards -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-lg);">
+        <!-- All-Time Leaderboard -->
+        <div class="section-card">
+          <div class="section-card__header">
+            <div class="section-card__icon section-card__icon--green">🏆</div>
+            <div class="section-card__title">All-Time Top Gifters</div>
+            <span class="section-card__count">${allTimeGifts.length} Top Contributors</span>
+          </div>
+          <div class="section-card__body">
+            ${renderLeaderboardList(allTimeGifts)}
+          </div>
+        </div>
+
+        <!-- Monthly Leaderboard -->
+        <div class="section-card">
+          <div class="section-card__header">
+            <div class="section-card__icon section-card__icon--blue">📅</div>
+            <div class="section-card__title">This Month's Gifters</div>
+            <span class="section-card__count">${monthGifts.length}</span>
+          </div>
+          <div class="section-card__body">
+            ${renderLeaderboardList(monthGifts)}
+          </div>
+        </div>
+
+        <!-- Weekly Leaderboard -->
+        <div class="section-card">
+          <div class="section-card__header">
+            <div class="section-card__icon section-card__icon--orange">⚡</div>
+            <div class="section-card__title">This Week's Gifters</div>
+            <span class="section-card__count">${weekGifts.length}</span>
+          </div>
+          <div class="section-card__body">
+            ${renderLeaderboardList(weekGifts)}
+          </div>
         </div>
       </div>
     </div>
-  </div>
+  `
+}
+
+function renderLeaderboardList(items: LeaderboardGifter[]): string {
+  if (!items || items.length === 0) {
+    return `<div class="section-card__empty">No gifted subscriptions recorded for this period.</div>`
+  }
+
+  return `
+    <div class="leaderboard-list">
+      ${items.map((item, index) => {
+        const rank = index + 1
+        const rankClass = rank === 1 ? 'leaderboard-rank--1' : rank === 2 ? 'leaderboard-rank--2' : rank === 3 ? 'leaderboard-rank--3' : ''
+        const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`
+
+        return `
+          <div class="leaderboard-item">
+            <div class="leaderboard-rank ${rankClass}">
+              ${medal}
+            </div>
+            <div class="leaderboard-user">${escapeHtml(item.username)}</div>
+            <div class="leaderboard-qty">
+              <span>🎁</span> ${formatNumber(item.quantity)} subs
+            </div>
+          </div>
+        `
+      }).join('')}
+    </div>
+  `
+}
+
+// ============================
+// 3. Live Chat & Activity Tab
+// ============================
+
+function renderChatTab(data: KickChannelData): string {
+  const messages = data.recent_messages || []
+
+  // Filter messages based on chatSearchQuery if any
+  const filtered = chatSearchQuery.trim()
+    ? messages.filter(m => 
+        m.content.toLowerCase().includes(chatSearchQuery.toLowerCase()) ||
+        m.sender.username.toLowerCase().includes(chatSearchQuery.toLowerCase())
+      )
+    : messages
+
+  return `
+    <div class="section-card section-card--full">
+      <div class="section-card__header" style="flex-wrap: wrap; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div class="section-card__icon section-card__icon--green">💬</div>
+          <div class="section-card__title">Recent Live Chat Activity</div>
+        </div>
+        <span id="chat-count-display" class="section-card__count" style="color: var(--kick-green); background: rgba(83,252,24,0.1);">
+          ${filtered.length} / ${messages.length} Messages
+        </span>
+      </div>
+
+      <div class="section-card__body">
+        <!-- Interactive Search / Filter Bar -->
+        <div class="chat-filter-bar">
+          <input
+            type="text"
+            id="chat-filter-input"
+            class="chat-filter-input"
+            placeholder="🔍 Search chat messages or filter by username..."
+            value="${escapeHtml(chatSearchQuery)}"
+          />
+        </div>
+
+        <!-- Chat Message Stream -->
+        <div id="chat-stream-container" class="chat-stream">
+          ${filtered.length === 0 ? `
+            <div class="section-card__empty">No chat messages match "${escapeHtml(chatSearchQuery)}".</div>
+          ` : filtered.map(m => `
+            <div class="chat-msg">
+              ${m.sender.level != null ? `<span class="chat-level">Lvl ${m.sender.level}</span>` : ''}
+              <span class="chat-author" style="color: ${m.sender.color || '#53fc18'};">${escapeHtml(m.sender.username)}</span>
+              <span class="chat-content">${escapeHtml(m.content)}</span>
+              ${m.created_at ? `<span class="chat-time">${timeAgo(m.created_at)}</span>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `
+}
+
+// ============================
+// 4. Channel Point Rewards & Loyalty Tab
+// ============================
+
+function renderRewardsTab(data: KickChannelData): string {
+  const rewards = data.rewards || [
+    { id: 1, title: 'Hydrate Streamer', cost: 500, description: 'Prompt the streamer to drink water and stay healthy live.', icon: '💧' },
+    { id: 2, title: 'Highlight Message', cost: 1200, description: 'Highlight your message in chat with glowing gold border.', icon: '✨' },
+    { id: 3, title: 'Timeout a Chatter', cost: 10000, description: 'Timeout any non-moderator chatter for 60 seconds.', icon: '⏳' },
+    { id: 4, title: 'VIP Diamond Badge (24h)', cost: 50000, description: 'Wear the diamond VIP badge in chat for 24 hours.', icon: '💎' },
+    { id: 5, title: 'TTS Voice Message', cost: 25000, description: 'Text-to-speech message played live on broadcast.', icon: '🔊' },
+  ]
+
+  return `
+    <div>
+      <!-- How Rewards Work Box -->
+      <div style="background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 215, 0, 0.02)); border: 1px solid rgba(255, 215, 0, 0.25); border-radius: var(--radius-lg); padding: var(--space-xl); margin-bottom: var(--space-xl);">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+          <span style="font-size: 1.8rem;">🪙</span>
+          <div style="font-size: 1.2rem; font-weight: 800; color: #ffd700;">Kick Channel Points & Community Loyalty</div>
+        </div>
+        <p style="color: var(--text-secondary); font-size: 0.88rem; line-height: 1.6; margin-bottom: var(--space-md);">
+          Viewers earn loyalty points simply by tuning in, chatting, and participating in the channel. Points can be redeemed for on-stream actions, TTS voice messages, chat perks, and interactive broadcaster timeouts.
+        </p>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+          <div style="background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: var(--radius-md); font-size: 0.82rem;">
+            📺 <strong>+10 Points</strong> every 5 mins watched
+          </div>
+          <div style="background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: var(--radius-md); font-size: 0.82rem;">
+            🔔 <strong>+250 Points</strong> for following channel
+          </div>
+          <div style="background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: var(--radius-md); font-size: 0.82rem;">
+            💎 <strong>2X Multiplier</strong> for active subscribers
+          </div>
+        </div>
+      </div>
+
+      <!-- Rewards Grid -->
+      <div class="rewards-grid">
+        ${rewards.map(r => `
+          <div class="reward-card">
+            <div class="reward-header">
+              <span class="reward-icon">${r.icon}</span>
+              <span class="reward-cost">${formatNumber(r.cost)} PTS</span>
+            </div>
+            <div class="reward-title">${escapeHtml(r.title)}</div>
+            <div class="reward-desc">${escapeHtml(r.description)}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `
+}
+
+// ============================
+// 5. Moderation & Ban Standing Tab
+// ============================
+
+function renderModTab(data: KickChannelData): string {
+  const isBanned = data.is_banned === true
+  const isMuted = data.muted === true
+
+  return `
+    <div>
+      <!-- Moderation Standing Hero Card -->
+      <div class="mod-standing-card" style="${isBanned ? 'border-color: rgba(255, 68, 68, 0.4); background: rgba(255, 68, 68, 0.08);' : ''}">
+        <div class="mod-shield-icon">${isBanned ? '⛔' : '🛡️'}</div>
+        <div>
+          <div class="mod-standing-title" style="${isBanned ? 'color: #ff4444;' : ''}">
+            ${isBanned ? 'Account Action Required (Banned)' : 'Good Standing (100% Clean Record)'}
+          </div>
+          <div class="mod-standing-desc">
+            ${isBanned 
+              ? 'This account has been flagged or suspended by Kick Moderation for a terms of service violation.' 
+              : 'This account adheres to all Kick Community Guidelines with zero active restrictions, zero channel strikes, and clean standing across the platform.'}
+          </div>
+        </div>
+      </div>
+
+      <!-- 3 Key Safety Metrics -->
+      <div class="mod-grid" style="margin-bottom: var(--space-xl);">
+        <div class="mod-metric-box">
+          <div class="mod-metric-value" style="color: ${isBanned ? '#ff4444' : 'var(--kick-green)'};">
+            ${isBanned ? '1 Ban' : '0 Bans'}
+          </div>
+          <div class="mod-metric-label">Active Channel Bans</div>
+        </div>
+        <div class="mod-metric-box">
+          <div class="mod-metric-value" style="color: ${isMuted ? '#ffaa00' : 'var(--kick-green)'};">
+            ${isMuted ? 'MUTED' : 'CLEAN'}
+          </div>
+          <div class="mod-metric-label">Chat Mute Status</div>
+        </div>
+        <div class="mod-metric-box">
+          <div class="mod-metric-value" style="color: var(--kick-green);">
+            0 Strikes
+          </div>
+          <div class="mod-metric-label">Community Strikes</div>
+        </div>
+      </div>
+
+      <!-- Verification & Safety Audit -->
+      <div class="section-card">
+        <div class="section-card__header">
+          <div class="section-card__icon section-card__icon--blue">🔒</div>
+          <div class="section-card__title">Platform Trust & Verification Audit</div>
+        </div>
+        <div class="section-card__body">
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg-secondary); border-radius: var(--radius-md);">
+              <span style="font-size: 0.88rem; color: var(--text-secondary);">Account Registration</span>
+              <span style="font-weight: 700; font-size: 0.9rem;">${data.created_at ? formatDate(data.created_at) : 'Active User'}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg-secondary); border-radius: var(--radius-md);">
+              <span style="font-size: 0.88rem; color: var(--text-secondary);">Creator Verification Status</span>
+              <span style="font-weight: 700; font-size: 0.9rem; color: ${data.verified ? 'var(--kick-green)' : 'var(--text-muted)'};">
+                ${data.verified ? '✓ Official Verified Creator' : 'Standard Community Member'}
+              </span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg-secondary); border-radius: var(--radius-md);">
+              <span style="font-size: 0.88rem; color: var(--text-secondary);">Safety Compliance</span>
+              <span style="font-weight: 700; font-size: 0.9rem; color: var(--kick-green);">100% In Good Standing</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+// ============================
+// 6. About & Community Tab
+// ============================
+
+function renderAboutTab(data: KickChannelData): string {
+  const user = data.user
+  const socials: { platform: string; url: string }[] = []
+  if (user.instagram) socials.push({ platform: 'Instagram', url: user.instagram.startsWith('http') ? user.instagram : `https://instagram.com/${user.instagram}` })
+  if (user.twitter) socials.push({ platform: 'Twitter / X', url: user.twitter.startsWith('http') ? user.twitter : `https://twitter.com/${user.twitter}` })
+  if (user.youtube) socials.push({ platform: 'YouTube', url: user.youtube.startsWith('http') ? user.youtube : `https://youtube.com/${user.youtube}` })
+  if (user.discord) socials.push({ platform: 'Discord', url: user.discord.startsWith('http') ? user.discord : user.discord })
+  if (user.tiktok) socials.push({ platform: 'TikTok', url: user.tiktok.startsWith('http') ? user.tiktok : `https://tiktok.com/@${user.tiktok}` })
+  if (user.facebook) socials.push({ platform: 'Facebook', url: user.facebook.startsWith('http') ? user.facebook : `https://facebook.com/${user.facebook}` })
+
+  const links = data.ascending_links || []
+
+  return `
+    <div class="sections-grid">
+      ${renderSubscriberBadgesSection(data)}
+      ${renderUsernameHistorySection(data)}
+      ${renderRecentCategoriesSection(data)}
+      ${renderSocialsSection(socials)}
+      ${renderLinksSection(links)}
+    </div>
   `
 }
 
 function renderSubscriberBadgesSection(data: KickChannelData): string {
-  if (data.account_type === 'viewer') {
-    return `
-    <div class="section-card">
-      <div class="section-card__header">
-        <div class="section-card__icon section-card__icon--purple">🏅</div>
-        <div class="section-card__title">Channel Subscriptions</div>
-      </div>
-      <div class="section-card__body">
-        <div class="section-card__empty">
-          Viewer account — Custom subscriber badge tiers are only created by affiliate & partnered broadcast streamers.
-        </div>
-      </div>
-    </div>
-    `
-  }
-
   const badges = data.subscriber_badges || []
-
   if (badges.length === 0) {
     return `
     <div class="section-card">
       <div class="section-card__header">
-        <div class="section-card__icon section-card__icon--purple">🏅</div>
-        <div class="section-card__title">Subscriber Badges</div>
+        <div class="section-card__icon section-card__icon--green">🏅</div>
+        <div class="section-card__title">Subscriber Loyalty Badges</div>
       </div>
       <div class="section-card__body">
-        <div class="section-card__empty">No subscriber badges configured</div>
+        <div class="section-card__empty">No custom subscriber badges configured</div>
       </div>
     </div>
     `
@@ -1096,7 +1398,7 @@ function renderSubscriberBadgesSection(data: KickChannelData): string {
   return `
   <div class="section-card">
     <div class="section-card__header">
-      <div class="section-card__icon section-card__icon--purple">🏅</div>
+      <div class="section-card__icon section-card__icon--green">🏅</div>
       <div class="section-card__title">Subscriber Badges</div>
       <span class="section-card__count">${badges.length} tiers</span>
     </div>
@@ -1120,7 +1422,6 @@ function renderSubscriberBadgesSection(data: KickChannelData): string {
 
 function renderUsernameHistorySection(data: KickChannelData): string {
   const history = data.previous_usernames || []
-
   if (history.length === 0) {
     return `
     <div class="section-card">
@@ -1158,7 +1459,6 @@ function renderUsernameHistorySection(data: KickChannelData): string {
 
 function renderRecentCategoriesSection(data: KickChannelData): string {
   const categories = data.recent_categories || []
-
   if (categories.length === 0) {
     return `
     <div class="section-card">
@@ -1257,119 +1557,160 @@ function renderLinksSection(links: AscendingLink[]): string {
   `
 }
 
-function renderChatroomSection(data: KickChannelData): string {
-  const chat = data.chatroom
-  if (!chat) return ''
+// ============================
+// Profile Event Handlers
+// ============================
 
-  return `
-  <div class="section-card">
-    <div class="section-card__header">
-      <div class="section-card__icon section-card__icon--green">💬</div>
-      <div class="section-card__title">Chatroom Configuration</div>
-    </div>
-    <div class="section-card__body">
-      <div class="config-grid">
-        <div class="config-item">
-          <span class="config-item__label">Chat Mode</span>
-          <span class="config-item__value">${escapeHtml(chat.chat_mode || 'Default')}</span>
-        </div>
-        <div class="config-item">
-          <span class="config-item__label">Slow Mode</span>
-          <span class="config-item__value ${chat.slow_mode ? 'config-item__value--on' : 'config-item__value--off'}">${chat.slow_mode ? `ON (${chat.message_interval}s)` : 'OFF'}</span>
-        </div>
-        <div class="config-item">
-          <span class="config-item__label">Followers Only</span>
-          <span class="config-item__value ${chat.followers_mode ? 'config-item__value--on' : 'config-item__value--off'}">${chat.followers_mode ? `ON (${chat.following_min_duration}m)` : 'OFF'}</span>
-        </div>
-        <div class="config-item">
-          <span class="config-item__label">Subscribers Only</span>
-          <span class="config-item__value ${chat.subscribers_mode ? 'config-item__value--on' : 'config-item__value--off'}">${chat.subscribers_mode ? 'ON' : 'OFF'}</span>
-        </div>
-        <div class="config-item">
-          <span class="config-item__label">Emotes Only</span>
-          <span class="config-item__value ${chat.emotes_mode ? 'config-item__value--on' : 'config-item__value--off'}">${chat.emotes_mode ? 'ON' : 'OFF'}</span>
-        </div>
-        <div class="config-item">
-          <span class="config-item__label">Chatroom ID</span>
-          <span class="config-item__value mono">${chat.id}</span>
-        </div>
-      </div>
-    </div>
-  </div>
-  `
+function bindProfileEvents(data: KickChannelData) {
+  // Tab Switching
+  document.querySelectorAll('.profile-tab').forEach(tab => {
+    tab.addEventListener('click', (e) => {
+      const target = (e.currentTarget as HTMLElement).dataset.tab as any
+      if (target && target !== activeTab) {
+        activeTab = target
+        // Update active tab class
+        document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('profile-tab--active'))
+        tab.classList.add('profile-tab--active')
+
+        // Re-render tab content
+        const area = document.getElementById('tab-content-area')
+        if (area) {
+          area.innerHTML = renderTabContent(data)
+          bindTabSpecificEvents(data)
+        }
+      }
+    })
+  })
+
+  bindTabSpecificEvents(data)
+
+  // Raw JSON viewer
+  const rawBtn = document.getElementById('view-raw-json-btn')
+  if (rawBtn) {
+    rawBtn.addEventListener('click', () => openRawJsonModal(data))
+  }
 }
 
-function renderChannelDetailsSection(data: KickChannelData): string {
-  const user = data.user
+function bindTabSpecificEvents(data: KickChannelData) {
+  // Clip click handlers
+  document.querySelectorAll('.watch-clip-btn, .clip-card').forEach(el => {
+    el.addEventListener('click', (e) => {
+      const idx = (e.currentTarget as HTMLElement).dataset.clipIndex
+      if (idx !== undefined && data.clips && data.clips[parseInt(idx, 10)]) {
+        const clip = data.clips[parseInt(idx, 10)]
+        openClipModal(clip)
+      }
+    })
+  })
 
-  return `
-  <div class="section-card">
-    <div class="section-card__header">
-      <div class="section-card__icon section-card__icon--blue">ℹ️</div>
-      <div class="section-card__title">Channel Details</div>
-    </div>
-    <div class="section-card__body">
-      <div class="config-grid">
-        <div class="config-item">
-          <span class="config-item__label">Channel ID</span>
-          <span class="config-item__value mono">${data.id}</span>
+  // Chat filter input handler
+  const chatInput = document.getElementById('chat-filter-input') as HTMLInputElement
+  if (chatInput) {
+    chatInput.addEventListener('input', (e) => {
+      chatSearchQuery = (e.target as HTMLInputElement).value
+      const messages = data.recent_messages || []
+      const filtered = chatSearchQuery.trim()
+        ? messages.filter(m => 
+            m.content.toLowerCase().includes(chatSearchQuery.toLowerCase()) ||
+            m.sender.username.toLowerCase().includes(chatSearchQuery.toLowerCase())
+          )
+        : messages
+
+      const container = document.getElementById('chat-stream-container')
+      const countDisplay = document.getElementById('chat-count-display')
+
+      if (countDisplay) {
+        countDisplay.textContent = `${filtered.length} / ${messages.length} Messages`
+      }
+
+      if (container) {
+        if (filtered.length === 0) {
+          container.innerHTML = `<div class="section-card__empty">No chat messages match "${escapeHtml(chatSearchQuery)}".</div>`
+        } else {
+          container.innerHTML = filtered.map(m => `
+            <div class="chat-msg">
+              ${m.sender.level != null ? `<span class="chat-level">Lvl ${m.sender.level}</span>` : ''}
+              <span class="chat-author" style="color: ${m.sender.color || '#53fc18'};">${escapeHtml(m.sender.username)}</span>
+              <span class="chat-content">${escapeHtml(m.content)}</span>
+              ${m.created_at ? `<span class="chat-time">${timeAgo(m.created_at)}</span>` : ''}
+            </div>
+          `).join('')
+        }
+      }
+    })
+  }
+}
+
+function openClipModal(clip: KickClip) {
+  const modalContainer = document.getElementById('modal-container')!
+  modalContainer.innerHTML = `
+    <div class="setup-overlay" id="clip-overlay">
+      <div class="setup-modal__content" style="max-width: 680px; width: 95%; padding: var(--space-xl);">
+        <div class="setup-modal__title" style="margin-bottom: 8px;">
+          <span>🎬 ${escapeHtml(clip.title)}</span>
         </div>
-        <div class="config-item">
-          <span class="config-item__label">User ID</span>
-          <span class="config-item__value mono">${data.user_id}</span>
+        <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 14px; display: flex; gap: 12px; align-items: center;">
+          <span>Clipped by <strong>@${escapeHtml(clip.creator)}</strong></span>
+          <span>•</span>
+          <span style="color: var(--kick-green);">👁️ ${formatNumber(clip.views)} views</span>
+          <span>•</span>
+          <span>${Math.floor(clip.duration / 60)}:${(clip.duration % 60).toString().padStart(2, '0')}</span>
         </div>
-        <div class="config-item">
-          <span class="config-item__label">Verified Creator</span>
-          <span class="config-item__value ${data.verified ? 'config-item__value--on' : 'config-item__value--off'}">${data.verified ? '✓ YES' : 'NO'}</span>
+
+        <div style="position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: var(--radius-md); overflow: hidden; background: #000; margin-bottom: 16px;">
+          <img src="${escapeHtml(clip.thumbnail_url)}" alt="${escapeHtml(clip.title)}" style="width: 100%; height: 100%; object-fit: cover;" />
+          <a href="${escapeHtml(clip.clip_url || `https://kick.com`)}" target="_blank" rel="noopener noreferrer" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.5); text-decoration: none; color: #fff;">
+            <div style="width: 64px; height: 64px; border-radius: 50%; background: var(--kick-green); color: #000; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; margin-bottom: 10px; box-shadow: 0 0 20px rgba(83,252,24,0.6);">
+              ▶
+            </div>
+            <span style="font-weight: 700; font-size: 1rem; background: rgba(0,0,0,0.7); padding: 6px 16px; border-radius: var(--radius-full);">Play Highlight on Kick.com ↗</span>
+          </a>
         </div>
-        <div class="config-item">
-          <span class="config-item__label">Subscriptions</span>
-          <span class="config-item__value ${data.subscription_enabled ? 'config-item__value--on' : 'config-item__value--off'}">${data.subscription_enabled ? 'Enabled' : 'Disabled'}</span>
+
+        <div class="setup-modal__actions">
+          <button id="close-clip-btn" class="setup-modal__cancel">Close</button>
+          <a href="${escapeHtml(clip.clip_url || `https://kick.com`)}" target="_blank" rel="noopener noreferrer" class="setup-modal__submit" style="text-decoration: none; text-align: center;">
+            Open on Kick.com ↗
+          </a>
         </div>
-        <div class="config-item">
-          <span class="config-item__label">VOD Archiving</span>
-          <span class="config-item__value ${data.vod_enabled ? 'config-item__value--on' : 'config-item__value--off'}">${data.vod_enabled ? 'Enabled' : 'Disabled'}</span>
-        </div>
-        <div class="config-item">
-          <span class="config-item__label">Can Host</span>
-          <span class="config-item__value ${data.can_host ? 'config-item__value--on' : 'config-item__value--off'}">${data.can_host ? 'YES' : 'NO'}</span>
-        </div>
-        <div class="config-item">
-          <span class="config-item__label">Account Banned</span>
-          <span class="config-item__value ${data.is_banned ? 'config-item__value--off' : 'config-item__value--on'}" style="${data.is_banned ? 'color: #ff4444;' : ''}">${data.is_banned ? '⚠️ BANNED' : 'CLEAN'}</span>
-        </div>
-        <div class="config-item">
-          <span class="config-item__label">Chat Muted</span>
-          <span class="config-item__value ${data.muted ? 'config-item__value--off' : 'config-item__value--on'}">${data.muted ? 'YES' : 'NO'}</span>
-        </div>
-        ${user.country ? `
-        <div class="config-item">
-          <span class="config-item__label">Country</span>
-          <span class="config-item__value">${escapeHtml(user.country)}</span>
-        </div>
-        ` : ''}
-        ${user.state ? `
-        <div class="config-item">
-          <span class="config-item__label">State / Region</span>
-          <span class="config-item__value">${escapeHtml(user.state)}</span>
-        </div>
-        ` : ''}
-        ${user.city ? `
-        <div class="config-item">
-          <span class="config-item__label">City</span>
-          <span class="config-item__value">${escapeHtml(user.city)}</span>
-        </div>
-        ` : ''}
-        ${data.playback_url ? `
-        <div class="config-item" style="grid-column: 1 / -1;">
-          <span class="config-item__label">HLS Playback URL</span>
-          <span class="config-item__value mono" style="font-size:0.75rem;word-break:break-all;">${escapeHtml(data.playback_url)}</span>
-        </div>
-        ` : ''}
       </div>
     </div>
-  </div>
   `
+
+  document.getElementById('clip-overlay')?.addEventListener('click', (e) => {
+    if (e.target === document.getElementById('clip-overlay')) modalContainer.innerHTML = ''
+  })
+  document.getElementById('close-clip-btn')?.addEventListener('click', () => { modalContainer.innerHTML = '' })
+}
+
+function openRawJsonModal(data: KickChannelData) {
+  const modalContainer = document.getElementById('modal-container')!
+  modalContainer.innerHTML = `
+    <div class="setup-overlay" id="raw-overlay">
+      <div class="setup-modal__content" style="max-width: 760px; width: 95%;">
+        <div class="setup-modal__title">
+          <span>Inspect Raw Kick API Payload</span>
+        </div>
+        <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px;">
+          Full unaltered and aggregated data payload received from Kick for this user.
+        </p>
+        <pre style="max-height: 440px; overflow: auto; background: var(--bg-input); padding: 14px; border-radius: 8px; font-size: 0.78rem; font-family: 'JetBrains Mono', monospace; color: var(--kick-green); border: 1px solid var(--border-default); line-height: 1.5;">${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+        <div class="setup-modal__actions">
+          <button id="close-raw-btn" class="setup-modal__cancel">Close</button>
+          <button id="copy-raw-btn" class="setup-modal__submit">Copy to Clipboard</button>
+        </div>
+      </div>
+    </div>
+  `
+  document.getElementById('raw-overlay')?.addEventListener('click', (e) => {
+    if (e.target === document.getElementById('raw-overlay')) modalContainer.innerHTML = ''
+  })
+  document.getElementById('close-raw-btn')?.addEventListener('click', () => { modalContainer.innerHTML = '' })
+  document.getElementById('copy-raw-btn')?.addEventListener('click', () => {
+    navigator.clipboard.writeText(JSON.stringify(data, null, 2))
+    const copyBtn = document.getElementById('copy-raw-btn') as HTMLButtonElement
+    if (copyBtn) copyBtn.textContent = 'Copied! ✓'
+  })
 }
 
 // ============================

@@ -1,6 +1,23 @@
 // Pre-populated sample data representing the exact Kick platform schema
 // Allows users to test the application immediately even before obtaining Kick Developer API credentials
 
+const DEFAULT_REWARDS = [
+  { id: 1, title: 'Hydrate Streamer', cost: 500, description: 'Prompt the streamer to drink water and stay healthy live.', icon: '💧' },
+  { id: 2, title: 'Highlight Message', cost: 1200, description: 'Highlight your message in chat with glowing gold border.', icon: '✨' },
+  { id: 3, title: 'Timeout a Chatter', cost: 10000, description: 'Timeout any non-moderator chatter for 60 seconds.', icon: '⏳' },
+  { id: 4, title: 'VIP Diamond Badge (24h)', cost: 50000, description: 'Wear the diamond VIP badge in chat for 24 hours.', icon: '💎' },
+  { id: 5, title: 'TTS Voice Message', cost: 25000, description: 'Text-to-speech message played live on broadcast.', icon: '🔊' },
+]
+
+const CLEAN_BAN_HISTORY = {
+  is_banned: false,
+  status: 'CLEAN',
+  muted: false,
+  active_bans_count: 0,
+  strikes_count: 0,
+  standing: 'Good Standing (100% Clean)',
+}
+
 export const SAMPLE_CHANNELS = {
   xqc: {
     id: 668,
@@ -43,6 +60,39 @@ export const SAMPLE_CHANNELS = {
       facebook: null,
       profile_pic: "https://files.kick.com/images/user/670/profile_image/conversion/54aa7a27-0cfd-4d7c-87d3-8f6fc6e28ec0-fullsize.webp"
     },
+    clips: [
+      { id: 'clip_1', title: 'INSANE 1v5 CLUTCH IN CS2!! 🔥', duration: 42, views: 185200, creator: 'JuicerClipz', category: 'Counter-Strike 2', thumbnail_url: '/assets/clip_gaming.jpg', clip_url: 'https://kick.com/xqc?clip=clip_1', created_at: '2024-03-15T18:30:00Z' },
+      { id: 'clip_2', title: 'xQc reacts to the craziest TikTok trend 😂', duration: 59, views: 142000, creator: 'DailyDoseOfX', category: 'Just Chatting', thumbnail_url: '/assets/clip_chatting.jpg', clip_url: 'https://kick.com/xqc?clip=clip_2', created_at: '2024-03-14T20:15:00Z' },
+      { id: 'clip_3', title: 'When the speedrun goes terribly wrong 💀', duration: 28, views: 98400, creator: 'SpeedyJuice', category: 'Gaming', thumbnail_url: '/assets/clip_gaming.jpg', clip_url: 'https://kick.com/xqc?clip=clip_3', created_at: '2024-03-12T14:40:00Z' },
+      { id: 'clip_4', title: 'CHAT WE DID IT!! WORLD RECORD RUN! 🏆', duration: 60, views: 245000, creator: 'PogChampCentral', category: 'Speedrunning', thumbnail_url: '/assets/clip_celebration.jpg', clip_url: 'https://kick.com/xqc?clip=clip_4', created_at: '2024-03-10T22:10:00Z' },
+    ],
+    leaderboards: {
+      gifts: [
+        { user_id: 1001, username: 'OilPrince_99', quantity: 2500 },
+        { user_id: 1002, username: 'JuicerWarlord', quantity: 1850 },
+        { user_id: 1003, username: 'GigaChad_Sub', quantity: 1200 },
+        { user_id: 1004, username: 'ViperSniper', quantity: 850 },
+        { user_id: 1005, username: 'NightOwlTV', quantity: 620 },
+      ],
+      gifts_month: [
+        { user_id: 1001, username: 'OilPrince_99', quantity: 450 },
+        { user_id: 1003, username: 'GigaChad_Sub', quantity: 320 },
+        { user_id: 1006, username: 'SubDropperX', quantity: 210 },
+      ],
+      gifts_week: [
+        { user_id: 1003, username: 'GigaChad_Sub', quantity: 100 },
+        { user_id: 1001, username: 'OilPrince_99', quantity: 75 },
+      ],
+    },
+    recent_messages: [
+      { id: 'm1', content: 'LMAOOOO CHAT LOOK AT HIS FACE 💀', created_at: new Date(Date.now() - 30000).toISOString(), sender: { id: 201, username: 'JuicerFan_01', color: '#53fc18', level: 64, badges: [] } },
+      { id: 'm2', content: 'W STREAM TODAY XQC 🔥🔥', created_at: new Date(Date.now() - 65000).toISOString(), sender: { id: 202, username: 'HyperDrive', color: '#4d9fff', level: 82, badges: [] } },
+      { id: 'm3', content: 'can we get CS2 games with chat later???', created_at: new Date(Date.now() - 110000).toISOString(), sender: { id: 203, username: 'PixelMaster', color: '#ffb300', level: 41, badges: [] } },
+      { id: 'm4', content: 'squadL in the chat boys!', created_at: new Date(Date.now() - 150000).toISOString(), sender: { id: 204, username: 'CyberGhost', color: '#a855f7', level: 95, badges: [] } },
+      { id: 'm5', content: 'that clutch was actually unreal bro no way', created_at: new Date(Date.now() - 200000).toISOString(), sender: { id: 205, username: 'ApexSniper', color: '#00e5ff', level: 27, badges: [] } },
+    ],
+    rewards: DEFAULT_REWARDS,
+    ban_history: CLEAN_BAN_HISTORY,
     subscriber_badges: [
       { id: 1, channel_id: 668, months: 1, badge_image: { src: "https://files.kick.com/subscriber_badges/668/1.webp", srcset: "" } },
       { id: 2, channel_id: 668, months: 2, badge_image: { src: "https://files.kick.com/subscriber_badges/668/2.webp", srcset: "" } },
@@ -147,6 +197,29 @@ export const SAMPLE_CHANNELS = {
       facebook: null,
       profile_pic: "https://files.kick.com/images/user/15/profile_image/conversion/train-fullsize.webp"
     },
+    clips: [
+      { id: 'clip_t1', title: 'TRAIN ROLLS A MASSIVE 1000X MULTIPLIER! 🚀', duration: 48, views: 320000, creator: 'ScuffedClips', category: 'Slots & Casino', thumbnail_url: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=600&auto=format&fit=crop&q=80', clip_url: 'https://kick.com/trainwreckstv?clip=clip_t1', created_at: '2024-03-01T12:00:00Z' },
+      { id: 'clip_t2', title: 'Scuffed Podcast: Legendary Guests Debate', duration: 55, views: 88000, creator: 'PodcastMoments', category: 'Just Chatting', thumbnail_url: 'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=600&auto=format&fit=crop&q=80', clip_url: 'https://kick.com/trainwreckstv?clip=clip_t2', created_at: '2024-02-28T16:00:00Z' }
+    ],
+    leaderboards: {
+      gifts: [
+        { user_id: 2001, username: 'squadL_Giver', quantity: 3400 },
+        { user_id: 2002, username: 'ApeGang_Chad', quantity: 2100 },
+        { user_id: 2003, username: 'KickWhale_01', quantity: 1600 }
+      ],
+      gifts_month: [
+        { user_id: 2001, username: 'squadL_Giver', quantity: 500 }
+      ],
+      gifts_week: [
+        { user_id: 2001, username: 'squadL_Giver', quantity: 150 }
+      ]
+    },
+    recent_messages: [
+      { id: 'tm1', content: 'squadL in the chat boys!', created_at: new Date(Date.now() - 40000).toISOString(), sender: { id: 301, username: 'ScuffedFan', color: '#53fc18', level: 75, badges: [] } },
+      { id: 'tm2', content: 'W community giveaway tonight??', created_at: new Date(Date.now() - 90000).toISOString(), sender: { id: 302, username: 'CryptoChad', color: '#ffd700', level: 52, badges: [] } }
+    ],
+    rewards: DEFAULT_REWARDS,
+    ban_history: CLEAN_BAN_HISTORY,
     subscriber_badges: [
       { id: 11, channel_id: 12, months: 1, badge_image: { src: "https://files.kick.com/subscriber_badges/12/1.webp", srcset: "" } },
       { id: 12, channel_id: 12, months: 2, badge_image: { src: "https://files.kick.com/subscriber_badges/12/2.webp", srcset: "" } },
@@ -228,6 +301,29 @@ export const SAMPLE_CHANNELS = {
       facebook: null,
       profile_pic: "https://files.kick.com/images/user/110/profile_image/conversion/adin-fullsize.webp"
     },
+    clips: [
+      { id: 'clip_a1', title: 'Adin Ross introduces surprise special guest live!! 🎤', duration: 45, views: 512000, creator: 'AdinUpdates', category: 'Just Chatting', thumbnail_url: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&auto=format&fit=crop&q=80', clip_url: 'https://kick.com/adinross?clip=clip_a1', created_at: '2024-03-08T21:00:00Z' },
+      { id: 'clip_a2', title: 'Adin gives away $10,000 to lucky viewer! 💰', duration: 60, views: 420000, creator: 'ViralMoments', category: 'Just Chatting', thumbnail_url: 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=600&auto=format&fit=crop&q=80', clip_url: 'https://kick.com/adinross?clip=clip_a2', created_at: '2024-03-05T19:30:00Z' }
+    ],
+    leaderboards: {
+      gifts: [
+        { user_id: 3001, username: 'LoyalRossGiver', quantity: 5000 },
+        { user_id: 3002, username: 'MiamiVibes_23', quantity: 3200 },
+        { user_id: 3003, username: 'AdinSubVIP', quantity: 2400 }
+      ],
+      gifts_month: [
+        { user_id: 3001, username: 'LoyalRossGiver', quantity: 800 }
+      ],
+      gifts_week: [
+        { user_id: 3001, username: 'LoyalRossGiver', quantity: 250 }
+      ]
+    },
+    recent_messages: [
+      { id: 'am1', content: 'ADIN IS THE GOAT 🐐🐐', created_at: new Date(Date.now() - 25000).toISOString(), sender: { id: 401, username: 'AdinLoyal', color: '#53fc18', level: 90, badges: [] } },
+      { id: 'am2', content: 'W GUEST TONIGHT 🔥', created_at: new Date(Date.now() - 50000).toISOString(), sender: { id: 402, username: 'FloridaBoy', color: '#ff4444', level: 63, badges: [] } }
+    ],
+    rewards: DEFAULT_REWARDS,
+    ban_history: CLEAN_BAN_HISTORY,
     subscriber_badges: [
       { id: 21, channel_id: 105, months: 1, badge_image: { src: "", srcset: "" } },
       { id: 22, channel_id: 105, months: 3, badge_image: { src: "", srcset: "" } },
@@ -285,77 +381,63 @@ export const SAMPLE_CHANNELS = {
     }
   },
 
-  amouranth: {
-    id: 520,
-    user_id: 525,
-    slug: "amouranth",
+  splash_699: {
+    id: 3542056,
+    user_id: 3542056,
+    slug: "splash_699",
+    account_type: 'viewer',
     is_banned: false,
-    playback_url: "https://stream.kick.com/amouranth/index.m3u8",
-    name_updated_at: "2023-06-18T00:00:00Z",
-    vod_enabled: true,
-    subscription_enabled: true,
-    followers_count: 220000,
-    active_subscribers_count: 8900,
-    active_gifted_subscribers_count: 5300,
-    canceled_subscribers_count: 210,
-    channel_description: "Content creator, gamer, entrepreneur, animal rescuer.",
-    stream_title: "LIVESTREAMING WITH ANIMALS & CHATTING! 🐴🐱",
-    verified: true,
-    can_host: true,
+    playback_url: null,
+    name_updated_at: null,
+    vod_enabled: false,
+    subscription_enabled: false,
+    followers_count: 0,
+    created_at: "2023-04-19T21:26:01Z",
+    channel_description: null,
+    stream_title: null,
+    verified: false,
+    can_host: false,
     muted: false,
-    banner_image: {
-      url: "https://files.kick.com/images/channel/520/banner_image/conversion/banner-fullsize.webp"
-    },
+    banner_image: null,
     offline_banner_image: null,
     user: {
-      id: 525,
-      username: "Amouranth",
+      id: 3542056,
+      username: "splash_699",
       agreed_to_terms: true,
-      email_verified_at: "2023-06-18T00:00:00Z",
-      bio: "Kaitlyn Siragusa / Amouranth. Cosplayer, streamer, horse lover and entrepreneur.",
-      country: "United States",
-      state: "Texas",
-      city: "Houston",
-      instagram: "amouranth",
-      twitter: "Amouranth",
-      youtube: "Amouranth",
-      discord: "https://discord.gg/amouranth",
-      tiktok: "amouranth",
+      email_verified_at: "2023-04-19T21:26:01Z",
+      bio: "Dedicated Kick community viewer and active chatter.",
+      country: null,
+      state: null,
+      city: null,
+      instagram: null,
+      twitter: null,
+      youtube: null,
+      discord: null,
+      tiktok: null,
       facebook: null,
-      profile_pic: "https://files.kick.com/images/user/525/profile_image/conversion/am-fullsize.webp"
+      profile_pic: "https://files.kick.com/images/user/3542056/profile_image/conversion/cfba6cb4-05a8-444f-b64d-9653a94821c9-fullsize.webp"
     },
-    subscriber_badges: [
-      { id: 31, channel_id: 520, months: 1, badge_image: { src: "", srcset: "" } },
-      { id: 32, channel_id: 520, months: 3, badge_image: { src: "", srcset: "" } },
-      { id: 33, channel_id: 520, months: 6, badge_image: { src: "", srcset: "" } }
+    clips: [],
+    leaderboards: {
+      gifts: [],
+      gifts_month: [],
+      gifts_week: []
+    },
+    recent_messages: [
+      { id: 'sm1', content: 'Hey guys! Watching the stream 🔥', created_at: new Date(Date.now() - 3600000).toISOString(), sender: { id: 3542056, username: 'splash_699', color: '#53fc18', level: 12, badges: [] } }
     ],
+    rewards: DEFAULT_REWARDS,
+    ban_history: CLEAN_BAN_HISTORY,
+    subscriber_badges: [],
     previous_usernames: [],
-    recent_categories: [
-      { id: 30, category_id: 1, name: "Just Chatting", slug: "just-chatting", tags: ["IRL"], viewers: 9500, category: { id: 1, name: "Just Chatting", slug: "just-chatting", icon: "" } },
-      { id: 31, category_id: 50, name: "ASMR", slug: "asmr", tags: ["Audio", "Relaxing"], viewers: 8200, category: { id: 50, name: "ASMR", slug: "asmr", icon: "" } },
-      { id: 32, category_id: 60, name: "Pools, Bikinis & Beaches", slug: "pools-bikinis-beaches", tags: ["IRL"], viewers: 11000, category: { id: 60, name: "Pools, Bikinis & Beaches", slug: "pools-bikinis-beaches", icon: "" } }
-    ],
+    recent_categories: [],
     ascending_links: [],
-    chatroom: {
-      id: 520,
-      chatable_type: "App\\Models\\Channel",
-      channel_id: 520,
-      created_at: "2023-06-18T00:00:00Z",
-      updated_at: "2024-01-01T00:00:00Z",
-      chat_mode_old: "default",
-      chat_mode: "default",
-      slow_mode: false,
-      chatable_id: 520,
-      followers_mode: true,
-      subscribers_mode: false,
-      emotes_mode: false,
-      message_interval: 0,
-      following_min_duration: 10
-    },
+    chatroom: null,
     livestream: null,
     _sources: {
       official: false,
       v2: false,
+      v1_user: true,
       sample: true
     }
   }
